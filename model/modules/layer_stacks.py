@@ -15,6 +15,7 @@ class LayerStacks(nn.Module):
         self.L1 = config.L1
         self.L2 = config.L2
         self.L3 = config.L3
+        self.Lo = config.Lo
 
         # Factorizer only for the first layer because later
         # there's a non-linearity and factorization breaks.
@@ -22,7 +23,7 @@ class LayerStacks(nn.Module):
         # able to diverge a lot.
         self.l1 = FactorizedStackedLinear(2 * self.L1 // 2, self.L2 + 1, count)
         self.l2 = StackedLinear(self.L2 * 2, self.L3, count)
-        self.output = StackedLinear(self.L3, 1, count)
+        self.output = StackedLinear(self.L3, self.Lo, count)
 
         with torch.no_grad():
             self.output.linear.bias.zero_()

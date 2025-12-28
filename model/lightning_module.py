@@ -87,9 +87,17 @@ class NNUE(L.LightningModule):
         p = self.loss_params
         # convert the network and search scores to an estimate match result
         # based on the win_rate_model, with scalings and offsets optimized
-        q = (scorenet - p.in_offset) / p.in_scaling
-        qm = (-scorenet - p.in_offset) / p.in_scaling
-        qf = 0.5 * (1.0 + q.sigmoid() - qm.sigmoid())
+        q0 = (scorenet[0:1] - p.in_offset) / p.in_scaling
+        qm0 = (-scorenet[0:1] - p.in_offset) / p.in_scaling
+        qf0 = 0.5 * (1.0 + q0.sigmoid() - qm0.sigmoid())
+
+        q1 = (scorenet[1:2] - p.in_offset) / p.in_scaling
+        qm1 = (-scorenet[1:2] - p.in_offset) / p.in_scaling
+        qf1 = 0.5 * (1.0 + q0.sigmoid() - qm0.sigmoid())
+
+        q2 = (scorenet[2:3] - p.in_offset) / p.in_scaling
+        qm2 = (-scorenet[2:3] - p.in_offset) / p.in_scaling
+        qf2 = 0.5 * (1.0 + q0.sigmoid() - qm0.sigmoid())
 
         s = (score - p.out_offset) / p.out_scaling
         sm = (-score - p.out_offset) / p.out_scaling
@@ -103,9 +111,14 @@ class NNUE(L.LightningModule):
         pt = pf * actual_lambda + t * (1.0 - actual_lambda)
 
         # use a MSE-like loss function
-        loss = torch.pow(torch.abs(pt - qf), p.pow_exp)
+        loss0 = torch.pow(torch.abs(pt - qf0), p.pow_exp)
         if p.qp_asymmetry != 0.0:
-            loss = loss * ((qf > pt) * p.qp_asymmetry + 1)
+            loss0 = loss0 * ((qf0 > pt) * p.qp_asymmetry + 1)
+        
+        loss1 = torch.pow(torch.abs(pt - qf1), p.pow_exp) * (1 + (qf1 > pt) * p.qp_asymmetry_aux)
+        loss2 = torch.pow(torch.abs(pt - qf2), p.pow_exp) * (1 + (qf2 > pt) * p.qp_asymmetry_aux)
+
+        loss = loss0 + p.loss_asymmetry_aux * (loss1 + loss2)
 
         weights = 1 + (2.0**p.w1 - 1) * torch.pow((pf - 0.5) ** 2 * pf * (1 - pf), p.w2)
         loss = (loss * weights).sum() / weights.sum()

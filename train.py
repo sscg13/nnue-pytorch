@@ -177,6 +177,20 @@ def main():
         help="Adjust to loss for those if q (prediction) > p (reference) (default=0.0)",
     )
     parser.add_argument(
+        "--qp-asymmetry-aux",
+        default=4.0,
+        type=float,
+        dest="qp_asymmetry_aux",
+        help="Imbalance auxiliary output loss to produce optimistic / pessimistic eval (default=4.0)"
+    )
+    parser.add_argument(
+        "--loss-asymmetry-aux",
+        default=0.05,
+        type=float,
+        dest="loss_asymmetry_aux",
+        help="Loss contribution from auxiliary outputs (default=0.05)"
+    )
+    parser.add_argument(
         "--pow-exp",
         default=2.5,
         type=float,
@@ -417,6 +431,8 @@ def main():
         end_lambda=args.end_lambda or args.lambda_,
         pow_exp=args.pow_exp,
         qp_asymmetry=args.qp_asymmetry,
+        qp_asymmetry_aux=args.qp_asymmetry_aux,
+        loss_asymmetry_aux=args.loss_asymmetry_aux,
         w1=args.w1,
         w2=args.w2,
     )
