@@ -116,7 +116,7 @@ class NNUE(L.LightningModule):
             loss0 = loss0 * ((qf0 > pt) * p.qp_asymmetry + 1)
         
         loss1 = torch.pow(torch.abs(pt - qf1), p.pow_exp) * (1 + (qf1 > pt) * p.qp_asymmetry_aux)
-        loss2 = torch.pow(torch.abs(pt - qf2), p.pow_exp) * (1 + (qf2 > pt) * p.qp_asymmetry_aux)
+        loss2 = torch.pow(torch.abs(pt - qf2), p.pow_exp) * (1 + (qf2 < pt) * p.qp_asymmetry_aux)
 
         loss = loss0 + p.loss_asymmetry_aux * (loss1 + loss2)
 
