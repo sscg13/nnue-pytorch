@@ -121,8 +121,8 @@ class NNUEModel(nn.Module):
         if self.feature_set.name.startswith("Full_Threats"):
             p = self.input.weight[0:self.threat_features]
             p_data_fp32 = p.data
-            min_weight = -128 / 255
-            max_weight = 127 / 255
+            min_weight = -64 / 255
+            max_weight = 63 / 255
             p_data_fp32.clamp_(min_weight, max_weight)
             p.data.copy_(p_data_fp32)
 
