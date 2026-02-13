@@ -6,7 +6,7 @@ from dataclasses import dataclass
 class ModelConfig:
     threat_features: int = 60144
     L1: int = 3072
-    L2: int = 15
+    L2: int = 31
     L3: int = 32
 
 
