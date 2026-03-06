@@ -169,7 +169,7 @@ int main(int argc, char** argv) {
     const DataloaderDDPConfig  ddp_config = {.rank = 0, .world_size = 1};
 
     std::unique_ptr<SparseBatchStream, SparseBatchStreamDeleter> stream(
-        create_sparse_batch_stream("Full_Threats+HalfKAv2_hm", concurrency, file_count, files,
+        create_sparse_batch_stream("Full_Threatsv2+HalfKAv2_hm", concurrency, file_count, files,
             batch_size, cyclic, config, ddp_config));
 
 

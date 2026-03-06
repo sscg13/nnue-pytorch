@@ -208,7 +208,7 @@ constexpr ThreatPieceOffsetTable  threatoffsetspiece = threatfeaturecalc.piece;
 constexpr int                     threatfeatures     = threatfeaturecalc.totalfeatures;
 static_assert(threatfeatures == 53564);
 
-struct FullThreats {
+struct FullThreatsv2 {
     static constexpr std::string_view NAME = "Full_Threatsv2";
 
     static constexpr int SQUARE_NB           = 64;
@@ -343,14 +343,14 @@ struct FullThreats {
     }
 };
 
-struct FullThreatsExtractor: IFeatureExtractor {
-    int inputs() const override { return FullThreats::INPUTS; }
-    int max_active_features() const override { return FullThreats::MAX_ACTIVE_FEATURES; }
+struct FullThreatsv2Extractor: IFeatureExtractor {
+    int inputs() const override { return FullThreatsv2::INPUTS; }
+    int max_active_features() const override { return FullThreatsv2::MAX_ACTIVE_FEATURES; }
     std::pair<int, int> fill_features_sparse(const TrainingDataEntry& e,
                                              int*                     features,
                                              float*                   values,
                                              Color                    color) const override {
-        return FullThreats::fill_features_sparse(e, features, values, color);
+        return FullThreatsv2::fill_features_sparse(e, features, values, color);
     }
 };
 
@@ -400,8 +400,8 @@ struct ComposedFeatureExtractor: IFeatureExtractor {
 static std::unique_ptr<IFeatureExtractor> make_single_extractor(std::string_view name) {
     if (name == "HalfKAv2_hm")
         return std::make_unique<HalfKAv2_hmExtractor>();
-    if (name == "Full_Threats")
-        return std::make_unique<FullThreatsExtractor>();
+    if (name == "Full_Threatsv2")
+        return std::make_unique<FullThreatsv2Extractor>();
     return nullptr;
 }
 

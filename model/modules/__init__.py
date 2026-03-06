@@ -5,7 +5,7 @@ from .feature_transformer import (
 )
 from .features import (
     ComposedFeatureTransformer,
-    FullThreats,
+    FullThreatsv2,
     HalfKav2Hm,
     InputFeature,
     combine_input_features,
@@ -21,7 +21,7 @@ __all__ = [
     "DoubleFeatureTransformer",
     "FeatureTransformer",
     "ComposedFeatureTransformer",
-    "FullThreats",
+    "FullThreatsv2",
     "HalfKav2Hm",
     "InputFeature",
     "combine_input_features",

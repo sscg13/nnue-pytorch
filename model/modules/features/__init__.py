@@ -3,7 +3,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from .composed import ComposedFeatureTransformer, combine_input_features
-from .full_threats import FullThreats
+from .full_threats import FullThreatsv2
 from .halfka_v2_hm import HalfKav2Hm
 from .input_feature import InputFeature
 
@@ -13,7 +13,7 @@ from typing import Annotated
 
 _FEATURE_COMPONENTS: dict[str, type[InputFeature]] = {
     "HalfKAv2_hm^": HalfKav2Hm,
-    "Full_Threats": FullThreats,
+    "Full_Threatsv2": FullThreatsv2,
 }
 
 
@@ -42,10 +42,10 @@ def add_feature_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--features",
         dest="features",
-        default="Full_Threats+HalfKAv2_hm^",
+        default="Full_Threatsv2+HalfKAv2_hm^",
         help="The feature set to use. Available: "
         + ", ".join(get_available_features())
-        + ". Combine with +, e.g. Full_Threats+HalfKAv2_hm^",
+        + ". Combine with +, e.g. Full_Threatsv2+HalfKAv2_hm^",
     )
 
 
@@ -53,7 +53,7 @@ __all__ = [
     "ComposedFeatureTransformer",
     "combine_input_features",
     "HalfKav2Hm",
-    "FullThreats",
+    "FullThreatsv2",
     "InputFeature",
     "get_feature_cls",
     "get_available_features",

@@ -4,14 +4,14 @@ from torch import nn
 from .input_feature import InputFeature
 
 
-class FullThreats(InputFeature):
+class FullThreatsv2(InputFeature):
     HASH = 0x8F234CB8
-    FEATURE_NAME = "Full_Threats"
-    INPUT_FEATURE_NAME = "Full_Threats"
+    FEATURE_NAME = "Full_Threatsv2"
+    INPUT_FEATURE_NAME = "Full_Threatsv2"
     MAX_ACTIVE_FEATURES = 128
 
-    NUM_INPUTS = 60144
-    NUM_REAL_FEATURES = 60144
+    NUM_INPUTS = 53564
+    NUM_REAL_FEATURES = 53564
     EXPORT_WEIGHT_DTYPE = torch.int8
 
     def __init__(self, num_outputs: int):
