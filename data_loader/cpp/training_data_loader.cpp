@@ -120,17 +120,29 @@ struct HalfKAv2_hmExtractor: IFeatureExtractor {
     }
 };
 
-constexpr int numvalidtargets[12] = {6, 6, 10, 10, 8, 8, 8, 8, 10, 10, 0, 0};
+constexpr int map[6][6] = {
+    { 0,  1, -1,  2, -1, -1},
+    { 0,  1,  2,  3,  4, -1},
+    { 0,  1,  2,  3, -1, -1},
+    { 0,  1,  2,  3, -1, -1},
+    { 0,  1,  2,  3,  4, -1},
+    {-1, -1, -1, -1, -1, -1}
+};
 
-using ThreatOffsetTable = std::array<std::array<int, 66>, 12>;
+using ThreatSquareOffsetTable = std::array<std::array<int, 64>, 12>;
+using ThreatPieceOffsetTable = std::array<std::array<int, 13>, 12>;
 
 struct ThreatFeatureCalculation {
-    ThreatOffsetTable table;
-    int               totalfeatures;
+    ThreatSquareOffsetTable full;
+    ThreatSquareOffsetTable semi;
+    ThreatPieceOffsetTable  piece;
+    int                     totalfeatures;
 };
 
 constexpr auto threatfeaturecalc = []() {
-    ThreatOffsetTable t{};
+    ThreatSquareOffsetTable f{};
+    ThreatSquareOffsetTable s{};
+    ThreatPieceOffsetTable  p{};
 
     constexpr auto pseudo_attacks = bb::detail::generatePseudoAttacks();
     int            pieceoffset    = 0;
@@ -143,37 +155,61 @@ constexpr auto threatfeaturecalc = []() {
         for (int pt = 0; pt < 6; pt++)
         {
             int piece        = 2 * pt + c;
-            t[piece][65]     = pieceoffset;
-            int squareoffset = 0;
+            p[piece][12]     = pieceoffset;
+            int squareoffsetfull = 0;
+            int squareoffsetsemi = 0;
             for (int from = (int) a1; from <= (int) h8; from++)
             {
-                t[piece][from] = squareoffset;
+                f[piece][from] = squareoffsetfull;
+                s[piece][from] = squareoffsetsemi;
                 if (piecetbl[piece].type() != PieceType::Pawn)
                 {
                     Bitboard attacks = pseudo_attacks[piecetbl[piece].type()][Square(from)];
-                    squareoffset += attacks.count();
+                    squareoffsetfull += attacks.count();
+                    squareoffsetsemi += (attacks & Bitboard::fromBits((1ULL << from) - 1)).count();
                 }
                 else if (from >= (int) a2 && from <= (int) h7)
                 {
                     Bitboard attacks =
                       bb::pawnAttacks(Bitboard::square(Square(from)), piecetbl[piece].color());
-                    squareoffset += attacks.count();
+                    squareoffsetfull += attacks.count();
+                    squareoffsetsemi += (attacks & Bitboard::fromBits((1ULL << from) - 1)).count();
                 }
             }
-            t[piece][64] = squareoffset;
-            pieceoffset += numvalidtargets[piece] * squareoffset;
+            if (pt != (int)PieceType::Pawn && 2 * squareoffsetsemi != squareoffsetfull) {
+                throw "error: semi not half full";
+            }
+            int targetoffset = 0;
+            for (int c2 = 0; c2 < 2; c2++) {
+                for (int pt2 = 0; pt2 < 6; pt2++) {
+                    int piece2 = 2 * pt2 + c2;
+                    p[piece][piece2] = targetoffset;
+                    if (map[pt][pt2] < 0 || (piece == (int)whitePawn && piece2 == (int)blackPawn)) {
+                        continue;
+                    }
+                    else if (pt == pt2 && pt != (int)PieceType::Pawn) {
+                        targetoffset += squareoffsetsemi;
+                    }
+                    else {
+                        targetoffset += squareoffsetfull;
+                    }
+                }
+            }
+            pieceoffset += targetoffset;
         }
     }
 
-    return ThreatFeatureCalculation{t, pieceoffset};
+    return ThreatFeatureCalculation{f, s, p, pieceoffset};
 }();
 
-constexpr ThreatOffsetTable threatoffsets  = threatfeaturecalc.table;
-constexpr int               threatfeatures = threatfeaturecalc.totalfeatures;
-static_assert(threatfeatures == 60144);
+constexpr ThreatSquareOffsetTable threatoffsetsfull  = threatfeaturecalc.full;
+constexpr ThreatSquareOffsetTable threatoffsetssemi  = threatfeaturecalc.semi;
+constexpr ThreatPieceOffsetTable  threatoffsetspiece = threatfeaturecalc.piece;
+constexpr int                     threatfeatures     = threatfeaturecalc.totalfeatures;
+static_assert(threatfeatures == 53564);
 
 struct FullThreats {
-    static constexpr std::string_view NAME = "Full_Threats";
+    static constexpr std::string_view NAME = "Full_Threatsv2";
 
     static constexpr int SQUARE_NB           = 64;
     static constexpr int PIECE_NB            = 12;
@@ -181,7 +217,7 @@ struct FullThreats {
     static constexpr int PIECE_TYPE_NB       = 6;
     static constexpr int MAX_ACTIVE_FEATURES = 128;
 
-    static constexpr int INPUTS = threatfeatures;  // 60,144
+    static constexpr int INPUTS = threatfeatures;  // 53,564
 
     // clang-format off
     static constexpr Square OrientTBL[COLOR_NB][SQUARE_NB] = {
@@ -201,15 +237,6 @@ struct FullThreats {
         a8, a8, a8, a8, h8, h8, h8, h8,
         a8, a8, a8, a8, h8, h8, h8, h8,
         a8, a8, a8, a8, h8, h8, h8, h8 }
-    };
-
-    static constexpr int map[PIECE_TYPE_NB][PIECE_TYPE_NB] = {
-      {0, 1, -1, 2, -1, -1},
-      {0, 1, 2, 3, 4, -1},
-      {0, 1, 2, 3, -1, -1},
-      {0, 1, 2, 3, -1, -1},
-      {0, 1, 2, 3, 4, -1},
-      {-1, -1, -1, -1, -1, -1}
     };
     // clang-format on
 
@@ -233,12 +260,16 @@ struct FullThreats {
                            ? bb::pawnAttacks(Bitboard::square(Square(from)), attkr.color())
                            : bb::detail::pseudoAttacks()[attkr.type()][Square(from)];
         Bitboard upto    = Bitboard::square(to);
-        return int(threatoffsets[(int) attkr][65]
-                   + (int(attkd.color()) * (numvalidtargets[(int) attkr] / 2)
-                      + map[(int) attkr.type()][(int) attkd.type()])
-                       * threatoffsets[(int) attkr][64]
-                   + threatoffsets[(int) attkr][(int) from]
-                   + (Bitboard::fromBits((1ULL << (int) to) - 1) & attacks).count());
+        
+        int index = threatoffsetspiece[(int) attkr][12] + threatoffsetspiece[(int) attkr][(int) attkd];
+        if (attkr.type() == attkd.type() && attkr.type() != PieceType::Pawn) {
+            index += threatoffsetssemi[(int) attkr][(int) from];
+        }
+        else {
+            index += threatoffsetsfull[(int) attkr][(int) from];
+        }
+        index += (Bitboard::fromBits((1ULL << (int) to) - 1) & attacks).count();
+        return index;
     }
 
     static std::pair<int, int>
