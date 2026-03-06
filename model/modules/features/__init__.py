@@ -3,7 +3,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from .composed import ComposedFeatureTransformer, combine_input_features
-from .full_threats import FullThreatsv2
+from .full_threatsv2 import FullThreatsv2
 from .halfka_v2_hm import HalfKav2Hm
 from .input_feature import InputFeature
 
