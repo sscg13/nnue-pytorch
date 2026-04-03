@@ -20,7 +20,7 @@ class LayerStacks(nn.Module):
         # there's a non-linearity and factorization breaks.
         # This is by design. The weights in the further layers should be
         # able to diverge a lot.
-        self.l1 = FactorizedStackedLinear(2 * self.L1 // 2, self.L2 + 1, count)
+        self.l1 = FactorizedStackedLinear(2 * self.L1 // 2, self.L2, count)
         self.l2 = StackedLinear(self.L2 * 2, self.L3, count)
         self.output = StackedLinear(self.L3, 1, count)
 
@@ -29,19 +29,17 @@ class LayerStacks(nn.Module):
 
     def forward(self, x: torch.Tensor, ls_indices: torch.Tensor):
         l1c_ = self.l1(x, ls_indices)
-        l1x_, l1x_out = l1c_.split(self.L2, dim=1)
         # multiply sqr crelu result by (255/256) to match quantized version
         l1x_ = torch.clamp(
-            torch.cat([torch.pow(l1x_, 2.0) * (255 / 256), l1x_], dim=1), 0.0, 1.0
+            torch.cat([torch.pow(l1c_, 2.0) * (255 / 256), l1c_], dim=1), 0.0, 1.0
         )
 
         l2c_ = self.l2(l1x_, ls_indices)
         l2x_ = torch.clamp(l2c_, 0.0, 1.0)
 
         l3c_ = self.output(l2x_, ls_indices)
-        l3x_ = l3c_ + l1x_out
 
-        return l3x_
+        return l3c_
 
     @torch.no_grad()
     def get_coalesced_layer_stacks(
