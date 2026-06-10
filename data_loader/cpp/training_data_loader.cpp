@@ -84,15 +84,17 @@ struct HalfKAv2_hmExtractor: IFeatureExtractor {
     }
 };
 
-// XOR-spacing-8 layout: W_ values are 0-5, B_ values are 8-13 (gaps at 6-7).
+// XOR-spacing-8 layout: W_ values are 0-6, B_ values are 8-14 (gaps at 7 and 15).
 // Perspective flip is then a single XOR: at ^ (perspective<<3) or tt ^ (perspective<<3).
 enum AttackType : int {
     W_PAWN_DIAG_AT = 0, W_PAWN_PUSH_AT = 1,
     W_KNIGHT_AT    = 2, W_BISHOP_AT    = 3, W_ROOK_AT  = 4, W_QUEEN_AT  = 5,
-    // values 6-7 are unused gaps
+    W_PAWN_PAIR_AT = 6,
+    // value 7 is an unused gap
     B_PAWN_DIAG_AT = 8, B_PAWN_PUSH_AT = 9,
     B_KNIGHT_AT    = 10, B_BISHOP_AT   = 11, B_ROOK_AT = 12, B_QUEEN_AT = 13,
-    ATTACK_TYPE_NB = 14
+    B_PAWN_PAIR_AT = 14,
+    ATTACK_TYPE_NB = 15
 };
 
 // XOR-spacing-8 layout: W_ values are 0-4, B_ values are 8-12 (gaps at 5-7).
@@ -122,7 +124,7 @@ constexpr TargetType make_target_type(Piece p) {
 // clang-format off
 // Slot index for each (AttackType, TargetType) pair.
 // -1 = fully excluded. >=0 = contiguous slot index used for feature base offset.
-// Gap AT rows (6,7) and gap TT columns (5,6,7) are all -1.
+// The gap AT row (7) and gap TT columns (5,6,7) are all -1.
 constexpr int8_t slot_map[ATTACK_TYPE_NB][TARGET_TYPE_NB] = {
   //                  W_P  W_N  W_B  W_R  W_Q  g5   g6   g7   B_P  B_N  B_B  B_R  B_Q
   /* W_PAWN_DIAG */ {  0,   1,  -1,   2,  -1,  -1,  -1,  -1,   3,   4,  -1,   5,  -1},
@@ -131,7 +133,7 @@ constexpr int8_t slot_map[ATTACK_TYPE_NB][TARGET_TYPE_NB] = {
   /* W_BISHOP    */ {  0,   1,   2,   3,  -1,  -1,  -1,  -1,   4,   5,   6,   7,  -1},
   /* W_ROOK      */ {  0,   1,   2,   3,  -1,  -1,  -1,  -1,   4,   5,   6,   7,  -1},
   /* W_QUEEN     */ {  0,   1,   2,   3,   4,  -1,  -1,  -1,   5,   6,   7,   8,   9},
-  /* gap_6       */ { -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1},
+  /* W_PAWN_PAIR */ {  0,  -1,  -1,  -1,  -1,  -1,  -1,  -1,   1,  -1,  -1,  -1,  -1},
   /* gap_7       */ { -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1},
   /* B_PAWN_DIAG */ {  0,   1,  -1,   2,  -1,  -1,  -1,  -1,   3,   4,  -1,   5,  -1},
   /* B_PAWN_PUSH */ {  0,  -1,  -1,  -1,  -1,  -1,  -1,  -1,   1,  -1,  -1,  -1,  -1},
@@ -139,6 +141,7 @@ constexpr int8_t slot_map[ATTACK_TYPE_NB][TARGET_TYPE_NB] = {
   /* B_BISHOP    */ {  0,   1,   2,   3,  -1,  -1,  -1,  -1,   4,   5,   6,   7,  -1},
   /* B_ROOK      */ {  0,   1,   2,   3,  -1,  -1,  -1,  -1,   4,   5,   6,   7,  -1},
   /* B_QUEEN     */ {  0,   1,   2,   3,   4,  -1,  -1,  -1,   5,   6,   7,   8,   9},
+  /* B_PAWN_PAIR */ {  0,  -1,  -1,  -1,  -1,  -1,  -1,  -1,   1,  -1,  -1,  -1,  -1},
 };
 
 // Semi-exclusion: true = only active when from_oriented >= to_oriented (FROM_GT convention).
@@ -150,7 +153,7 @@ constexpr bool semi_map[ATTACK_TYPE_NB][TARGET_TYPE_NB] = {
   /* W_BISHOP    */ {false, false,  true, false, false, false, false, false, false, false,  true, false, false},
   /* W_ROOK      */ {false, false, false,  true, false, false, false, false, false, false, false,  true, false},
   /* W_QUEEN     */ {false, false, false, false,  true, false, false, false, false, false, false, false,  true},
-  /* gap_6       */ {false, false, false, false, false, false, false, false, false, false, false, false, false},
+  /* W_PAWN_PAIR */ { true, false, false, false, false, false, false, false,  true, false, false, false, false},
   /* gap_7       */ {false, false, false, false, false, false, false, false, false, false, false, false, false},
   /* B_PAWN_DIAG */ { true, false, false, false, false, false, false, false, false, false, false, false, false},
   /* B_PAWN_PUSH */ {false, false, false, false, false, false, false, false, false, false, false, false, false},
@@ -158,8 +161,25 @@ constexpr bool semi_map[ATTACK_TYPE_NB][TARGET_TYPE_NB] = {
   /* B_BISHOP    */ {false, false,  true, false, false, false, false, false, false, false,  true, false, false},
   /* B_ROOK      */ {false, false, false,  true, false, false, false, false, false, false, false,  true, false},
   /* B_QUEEN     */ {false, false, false, false,  true, false, false, false, false, false, false, false,  true},
+  /* B_PAWN_PAIR */ { true, false, false, false, false, false, false, false,  true, false, false, false, false},
 };
 // clang-format on
+
+// Pawn-pair geometry: own + adjacent files, restricted to ranks 2-7, excluding
+// the source square. Color-independent. Mirrors Stockfish's pawn_pair_bb().
+constexpr std::uint64_t pawn_pair_mask(int sq) {
+    constexpr std::uint64_t FileA = 0x0101010101010101ULL;
+    constexpr std::uint64_t Rank1 = 0xFFULL;
+    constexpr std::uint64_t Rank8 = Rank1 << 56;
+
+    const int     f     = sq & 7;
+    std::uint64_t files = FileA << f;
+    if (f > 0)
+        files |= FileA << (f - 1);
+    if (f < 7)
+        files |= FileA << (f + 1);
+    return files & ~Rank1 & ~Rank8 & ~(1ULL << sq);
+}
 
 using ThreatOffsetTable = std::array<std::array<int, 66>, ATTACK_TYPE_NB>;
 
@@ -215,6 +235,11 @@ constexpr auto threatfeaturecalc = []() {
                 if (inRange)
                     squareoffset += 1;
             }
+            else if (at == W_PAWN_PAIR_AT || at == B_PAWN_PAIR_AT)
+            {
+                if (inRange)
+                    squareoffset += Bitboard::fromBits(pawn_pair_mask(from)).count();
+            }
             else if (num_slots(at) > 0)
             {
                 // Non-pawn valid types: at in {2,3,4,5,10,11,12,13}.
@@ -222,7 +247,7 @@ constexpr auto threatfeaturecalc = []() {
                 int pt = (at & 7) - 1;  // Knight=1, Bishop=2, Rook=3, Queen=4
                 squareoffset += pseudo_attacks[(PieceType) pt][Square(from)].count();
             }
-            // else: gap AT (6 or 7) — num_slots=0, contributes 0; squareoffset stays 0.
+            // else: gap AT (7) — num_slots=0, contributes 0; squareoffset stays 0.
         }
 
         t[at][64] = squareoffset;
@@ -233,16 +258,16 @@ constexpr auto threatfeaturecalc = []() {
 
 constexpr ThreatOffsetTable threatoffsets  = threatfeaturecalc.table;
 constexpr int               threatfeatures = threatfeaturecalc.totalfeatures;
-static_assert(threatfeatures == 60336);
+static_assert(threatfeatures == 63312);
 
 struct FullThreats {
     static constexpr std::string_view NAME = "Full_Threats";
 
     static constexpr int SQUARE_NB           = 64;
     static constexpr int COLOR_NB            = 2;
-    static constexpr int MAX_ACTIVE_FEATURES = 128;
+    static constexpr int MAX_ACTIVE_FEATURES = 224;
 
-    static constexpr int INPUTS = threatfeatures;  // 60,336
+    static constexpr int INPUTS = threatfeatures;  // 63,312
 
     // clang-format off
     static constexpr Square OrientTBL[COLOR_NB][SQUARE_NB] = {
@@ -302,6 +327,8 @@ struct FullThreats {
             attacks = bb::pawnAttacks(Bitboard::square(from_oriented), Color::Black);
         else if (at_oriented == B_PAWN_PUSH_AT)
             attacks = Bitboard::square(Square((int) from_oriented - 8));
+        else if (at_oriented == W_PAWN_PAIR_AT || at_oriented == B_PAWN_PAIR_AT)
+            attacks = Bitboard::fromBits(pawn_pair_mask((int) from_oriented));
         else
         {
             // Non-pawn: at_oriented in {2,3,4,5} (W_) or {10,11,12,13} (B_).
@@ -365,6 +392,22 @@ struct FullThreats {
                     TargetType tt    = make_target_type(pos.pieceAt(to));  // always a pawn
                     int        index = threat_index(color, at_push, from, to, tt, ksq);
                     if (index >= 0) { values[k] = 1.0f; features[k++] = index; }
+                }
+
+                // ---- Pawn pairs (any colors, files at most 1 apart) ----
+                // Both directed entries of every pair are produced across the two
+                // color loops (and within this loop for same-color pairs); the
+                // semi-exclusion in threat_index keeps exactly one per perspective.
+                AttackType at_pair = (c == Color::White) ? W_PAWN_PAIR_AT : B_PAWN_PAIR_AT;
+                for (Square from : bb)
+                {
+                    Bitboard targets = Bitboard::fromBits(pawn_pair_mask((int) from)) & allPawns;
+                    for (Square to : targets)
+                    {
+                        TargetType tt    = make_target_type(pos.pieceAt(to));
+                        int        index = threat_index(color, at_pair, from, to, tt, ksq);
+                        if (index >= 0) { values[k] = 1.0f; features[k++] = index; }
+                    }
                 }
             }
 
