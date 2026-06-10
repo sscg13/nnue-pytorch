@@ -82,24 +82,30 @@ struct HalfKAv2_hmExtractor: IFeatureExtractor {
     }
 };
 
+// XOR-spacing-8 layout: W_ values are 0-5, B_ values are 8-13 (gaps at 6-7).
+// Perspective flip is then a single XOR: at ^ (perspective<<3) or tt ^ (perspective<<3).
 enum AttackType : int {
     W_PAWN_DIAG_AT = 0, W_PAWN_PUSH_AT = 1,
     W_KNIGHT_AT    = 2, W_BISHOP_AT    = 3, W_ROOK_AT  = 4, W_QUEEN_AT  = 5,
-    B_PAWN_DIAG_AT = 6, B_PAWN_PUSH_AT = 7,
-    B_KNIGHT_AT    = 8, B_BISHOP_AT    = 9, B_ROOK_AT  = 10, B_QUEEN_AT = 11,
-    ATTACK_TYPE_NB = 12
+    // values 6-7 are unused gaps
+    B_PAWN_DIAG_AT = 8, B_PAWN_PUSH_AT = 9,
+    B_KNIGHT_AT    = 10, B_BISHOP_AT   = 11, B_ROOK_AT = 12, B_QUEEN_AT = 13,
+    ATTACK_TYPE_NB = 14
 };
 
+// XOR-spacing-8 layout: W_ values are 0-4, B_ values are 8-12 (gaps at 5-7).
 enum TargetType : int {
     W_PAWN_TT = 0, W_KNIGHT_TT = 1, W_BISHOP_TT = 2, W_ROOK_TT = 3, W_QUEEN_TT = 4,
-    B_PAWN_TT = 5, B_KNIGHT_TT = 6, B_BISHOP_TT = 7, B_ROOK_TT = 8, B_QUEEN_TT = 9,
-    TARGET_TYPE_NB = 10
+    // values 5-7 are unused gaps
+    B_PAWN_TT = 8, B_KNIGHT_TT = 9, B_BISHOP_TT = 10, B_ROOK_TT = 11, B_QUEEN_TT = 12,
+    TARGET_TYPE_NB = 13
 };
 
 // p.type(): Pawn=0, Knight=1, Bishop=2, Rook=3, Queen=4, King=5
 // p.color(): White=0, Black=1
+// Base is 0 for White, 8 for Black — supports XOR perspective flip (at ^ (perspective<<3)).
 constexpr AttackType make_attack_type(Piece p, bool isPush = false) {
-    int base = (int) p.color() * 6;
+    int base = (int) p.color() * 8;
     if (p.type() == PieceType::Pawn)
         return AttackType(base + (isPush ? 1 : 0));
     return AttackType(base + (int) p.type() + 1);
@@ -107,47 +113,53 @@ constexpr AttackType make_attack_type(Piece p, bool isPush = false) {
 
 constexpr TargetType make_target_type(Piece p) {
     // Caller must guarantee p.type() != King
-    return TargetType((int) p.color() * 5 + (int) p.type());
+    // Base is 0 for White, 8 for Black — supports XOR perspective flip (tt ^ (perspective<<3)).
+    return TargetType((int) p.color() * 8 + (int) p.type());
 }
 
 // clang-format off
 // Slot index for each (AttackType, TargetType) pair.
 // -1 = fully excluded. >=0 = contiguous slot index used for feature base offset.
+// Gap AT rows (6,7) and gap TT columns (5,6,7) are all -1.
 constexpr int8_t slot_map[ATTACK_TYPE_NB][TARGET_TYPE_NB] = {
-  //                  W_P  W_N  W_B  W_R  W_Q  B_P  B_N  B_B  B_R  B_Q
-  /* W_PAWN_DIAG */ {  0,   1,  -1,   2,  -1,   3,   4,  -1,   5,  -1},
-  /* W_PAWN_PUSH */ {  0,  -1,  -1,  -1,  -1,   1,  -1,  -1,  -1,  -1},
-  /* W_KNIGHT    */ {  0,   1,   2,   3,   4,   5,   6,   7,   8,   9},
-  /* W_BISHOP    */ {  0,   1,   2,   3,  -1,   4,   5,   6,   7,  -1},
-  /* W_ROOK      */ {  0,   1,   2,   3,  -1,   4,   5,   6,   7,  -1},
-  /* W_QUEEN     */ {  0,   1,   2,   3,   4,   5,   6,   7,   8,   9},
-  /* B_PAWN_DIAG */ {  0,   1,  -1,   2,  -1,   3,   4,  -1,   5,  -1},
-  /* B_PAWN_PUSH */ {  0,  -1,  -1,  -1,  -1,   1,  -1,  -1,  -1,  -1},
-  /* B_KNIGHT    */ {  0,   1,   2,   3,   4,   5,   6,   7,   8,   9},
-  /* B_BISHOP    */ {  0,   1,   2,   3,  -1,   4,   5,   6,   7,  -1},
-  /* B_ROOK      */ {  0,   1,   2,   3,  -1,   4,   5,   6,   7,  -1},
-  /* B_QUEEN     */ {  0,   1,   2,   3,   4,   5,   6,   7,   8,   9},
+  //                  W_P  W_N  W_B  W_R  W_Q  g5   g6   g7   B_P  B_N  B_B  B_R  B_Q
+  /* W_PAWN_DIAG */ {  0,   1,  -1,   2,  -1,  -1,  -1,  -1,   3,   4,  -1,   5,  -1},
+  /* W_PAWN_PUSH */ {  0,  -1,  -1,  -1,  -1,  -1,  -1,  -1,   1,  -1,  -1,  -1,  -1},
+  /* W_KNIGHT    */ {  0,   1,   2,   3,   4,  -1,  -1,  -1,   5,   6,   7,   8,   9},
+  /* W_BISHOP    */ {  0,   1,   2,   3,  -1,  -1,  -1,  -1,   4,   5,   6,   7,  -1},
+  /* W_ROOK      */ {  0,   1,   2,   3,  -1,  -1,  -1,  -1,   4,   5,   6,   7,  -1},
+  /* W_QUEEN     */ {  0,   1,   2,   3,   4,  -1,  -1,  -1,   5,   6,   7,   8,   9},
+  /* gap_6       */ { -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1},
+  /* gap_7       */ { -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1},
+  /* B_PAWN_DIAG */ {  0,   1,  -1,   2,  -1,  -1,  -1,  -1,   3,   4,  -1,   5,  -1},
+  /* B_PAWN_PUSH */ {  0,  -1,  -1,  -1,  -1,  -1,  -1,  -1,   1,  -1,  -1,  -1,  -1},
+  /* B_KNIGHT    */ {  0,   1,   2,   3,   4,  -1,  -1,  -1,   5,   6,   7,   8,   9},
+  /* B_BISHOP    */ {  0,   1,   2,   3,  -1,  -1,  -1,  -1,   4,   5,   6,   7,  -1},
+  /* B_ROOK      */ {  0,   1,   2,   3,  -1,  -1,  -1,  -1,   4,   5,   6,   7,  -1},
+  /* B_QUEEN     */ {  0,   1,   2,   3,   4,  -1,  -1,  -1,   5,   6,   7,   8,   9},
 };
 
 // Semi-exclusion: true = only active when from_oriented >= to_oriented (FROM_GT convention).
 constexpr bool semi_map[ATTACK_TYPE_NB][TARGET_TYPE_NB] = {
-  //                  W_P    W_N    W_B    W_R    W_Q    B_P    B_N    B_B    B_R    B_Q
-  /* W_PAWN_DIAG */ {false, false, false, false, false,  true, false, false, false, false},
-  /* W_PAWN_PUSH */ {false, false, false, false, false, false, false, false, false, false},
-  /* W_KNIGHT    */ {false,  true, false, false, false, false,  true, false, false, false},
-  /* W_BISHOP    */ {false, false,  true, false, false, false, false,  true, false, false},
-  /* W_ROOK      */ {false, false, false,  true, false, false, false, false,  true, false},
-  /* W_QUEEN     */ {false, false, false, false,  true, false, false, false, false,  true},
-  /* B_PAWN_DIAG */ { true, false, false, false, false, false, false, false, false, false},
-  /* B_PAWN_PUSH */ {false, false, false, false, false, false, false, false, false, false},
-  /* B_KNIGHT    */ {false,  true, false, false, false, false,  true, false, false, false},
-  /* B_BISHOP    */ {false, false,  true, false, false, false, false,  true, false, false},
-  /* B_ROOK      */ {false, false, false,  true, false, false, false, false,  true, false},
-  /* B_QUEEN     */ {false, false, false, false,  true, false, false, false, false,  true},
+  //                  W_P    W_N    W_B    W_R    W_Q    g5     g6     g7     B_P    B_N    B_B    B_R    B_Q
+  /* W_PAWN_DIAG */ {false, false, false, false, false, false, false, false,  true, false, false, false, false},
+  /* W_PAWN_PUSH */ {false, false, false, false, false, false, false, false, false, false, false, false, false},
+  /* W_KNIGHT    */ {false,  true, false, false, false, false, false, false, false,  true, false, false, false},
+  /* W_BISHOP    */ {false, false,  true, false, false, false, false, false, false, false,  true, false, false},
+  /* W_ROOK      */ {false, false, false,  true, false, false, false, false, false, false, false,  true, false},
+  /* W_QUEEN     */ {false, false, false, false,  true, false, false, false, false, false, false, false,  true},
+  /* gap_6       */ {false, false, false, false, false, false, false, false, false, false, false, false, false},
+  /* gap_7       */ {false, false, false, false, false, false, false, false, false, false, false, false, false},
+  /* B_PAWN_DIAG */ { true, false, false, false, false, false, false, false, false, false, false, false, false},
+  /* B_PAWN_PUSH */ {false, false, false, false, false, false, false, false, false, false, false, false, false},
+  /* B_KNIGHT    */ {false,  true, false, false, false, false, false, false, false,  true, false, false, false},
+  /* B_BISHOP    */ {false, false,  true, false, false, false, false, false, false, false,  true, false, false},
+  /* B_ROOK      */ {false, false, false,  true, false, false, false, false, false, false, false,  true, false},
+  /* B_QUEEN     */ {false, false, false, false,  true, false, false, false, false, false, false, false,  true},
 };
 // clang-format on
 
-using ThreatOffsetTable = std::array<std::array<int, 66>, 12>;
+using ThreatOffsetTable = std::array<std::array<int, 66>, ATTACK_TYPE_NB>;
 
 struct ThreatFeatureCalculation {
     ThreatOffsetTable table;
@@ -201,14 +213,14 @@ constexpr auto threatfeaturecalc = []() {
                 if (inRange)
                     squareoffset += 1;
             }
-            else
+            else if (num_slots(at) > 0)
             {
-                // Non-pawn: W_ and B_ variants share the same attack geometry.
-                // at=2..5  -> pt=1..4 (Knight..Queen)
-                // at=8..11 -> pt=1..4 (Knight..Queen)
-                int pt = (at < 6) ? (at - 1) : (at - 7);
+                // Non-pawn valid types: at in {2,3,4,5,10,11,12,13}.
+                // (at & 7) gives {2,3,4,5} for both W_ and B_ non-pawn → pt = (at&7)-1 = 1..4.
+                int pt = (at & 7) - 1;  // Knight=1, Bishop=2, Rook=3, Queen=4
                 squareoffset += pseudo_attacks[(PieceType) pt][Square(from)].count();
             }
+            // else: gap AT (6 or 7) — num_slots=0, contributes 0; squareoffset stays 0.
         }
 
         t[at][64] = squareoffset;
@@ -262,11 +274,12 @@ struct FullThreats {
         Square from_oriented = (Square) ((int) from ^ orient);
         Square to_oriented   = (Square) ((int) to   ^ orient);
 
-        // Flip W<->B when computing from Black's perspective
-        AttackType at_oriented =
-          (perspective == Color::Black) ? AttackType(at < 6 ? at + 6 : at - 6) : at;
-        TargetType tt_oriented =
-          (perspective == Color::Black) ? TargetType(tt < 5 ? tt + 5 : tt - 5) : tt;
+        // Flip W<->B when computing from Black's perspective.
+        // XOR-spacing-8: W_=0-5, B_=8-13 for AT; W_=0-4, B_=8-12 for TT.
+        // XOR with 8 swaps between the two ranges without branches.
+        int pxor       = (perspective == Color::Black) ? 8 : 0;
+        AttackType at_oriented = AttackType(at ^ pxor);
+        TargetType tt_oriented = TargetType(tt ^ pxor);
 
         // Full exclusion
         int8_t slot = slot_map[at_oriented][tt_oriented];
@@ -289,8 +302,9 @@ struct FullThreats {
             attacks = Bitboard::square(Square((int) from_oriented - 8));
         else
         {
-            // at=2..5 -> pt=1..4; at=8..11 -> pt=1..4
-            int pt = (at_oriented < 6) ? (at_oriented - 1) : (at_oriented - 7);
+            // Non-pawn: at_oriented in {2,3,4,5} (W_) or {10,11,12,13} (B_).
+            // (at_oriented & 7) gives {2,3,4,5} for both → pt = (at_oriented & 7) - 1 = 1..4.
+            int pt = (at_oriented & 7) - 1;  // Knight=1, Bishop=2, Rook=3, Queen=4
             attacks = bb::detail::pseudoAttacks()[(PieceType) pt][from_oriented];
         }
         return int(threatoffsets[at_oriented][65]
