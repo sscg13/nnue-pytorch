@@ -5,13 +5,13 @@ from .input_feature import InputFeature
 
 
 class FullThreats(InputFeature):
-    HASH = 0x9D6E4F50
+    HASH = 0x2E6B9D04
     FEATURE_NAME = "Full_Threats"
     INPUT_FEATURE_NAME = "Full_Threats"
     MAX_ACTIVE_FEATURES = 224
 
-    NUM_INPUTS = 62784
-    NUM_REAL_FEATURES = 62784
+    NUM_INPUTS = 59808
+    NUM_REAL_FEATURES = 59808
     EXPORT_WEIGHT_DTYPE = torch.int8
 
     def __init__(self, num_outputs: int):

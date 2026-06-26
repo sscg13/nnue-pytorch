@@ -122,11 +122,11 @@ constexpr TargetType make_target_type(Piece p) {
 // Slot index for each (AttackType, TargetType) pair.
 // -1 = fully excluded. >=0 = contiguous slot index used for feature base offset.
 // The gap AT rows (6,7 and 14,15) and gap TT columns (5,6,7) are all -1.
-// PAWN_DIAG no longer targets pawns (captured by the PAWN_PAIR rows).
+// PAWN_DIAG does not target pawns; pawn-on-pawn co-presence is captured by PP_3Wide.
 constexpr int8_t slot_map[ATTACK_TYPE_NB][TARGET_TYPE_NB] = {
   //                  W_P  W_N  W_B  W_R  W_Q  g5   g6   g7   B_P  B_N  B_B  B_R  B_Q
   /* W_PAWN_DIAG */ { -1,   0,  -1,   1,  -1,  -1,  -1,  -1,  -1,   2,  -1,   3,  -1},
-  /* W_PAWN_PAIR */ {  0,  -1,  -1,  -1,  -1,  -1,  -1,  -1,   1,  -1,  -1,  -1,  -1},
+  /* W_PAWN_PAIR */ { -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1},
   /* W_KNIGHT    */ {  0,   1,   2,   3,   4,  -1,  -1,  -1,   5,   6,   7,   8,   9},
   /* W_BISHOP    */ {  0,   1,   2,   3,  -1,  -1,  -1,  -1,   4,   5,   6,   7,  -1},
   /* W_ROOK      */ {  0,   1,   2,   3,  -1,  -1,  -1,  -1,   4,   5,   6,   7,  -1},
@@ -134,7 +134,7 @@ constexpr int8_t slot_map[ATTACK_TYPE_NB][TARGET_TYPE_NB] = {
   /* gap_6       */ { -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1},
   /* gap_7       */ { -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1},
   /* B_PAWN_DIAG */ { -1,   0,  -1,   1,  -1,  -1,  -1,  -1,  -1,   2,  -1,   3,  -1},
-  /* B_PAWN_PAIR */ {  0,  -1,  -1,  -1,  -1,  -1,  -1,  -1,   1,  -1,  -1,  -1,  -1},
+  /* B_PAWN_PAIR */ { -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1},
   /* B_KNIGHT    */ {  0,   1,   2,   3,   4,  -1,  -1,  -1,   5,   6,   7,   8,   9},
   /* B_BISHOP    */ {  0,   1,   2,   3,  -1,  -1,  -1,  -1,   4,   5,   6,   7,  -1},
   /* B_ROOK      */ {  0,   1,   2,   3,  -1,  -1,  -1,  -1,   4,   5,   6,   7,  -1},
@@ -145,7 +145,7 @@ constexpr int8_t slot_map[ATTACK_TYPE_NB][TARGET_TYPE_NB] = {
 constexpr bool semi_map[ATTACK_TYPE_NB][TARGET_TYPE_NB] = {
   //                  W_P    W_N    W_B    W_R    W_Q    g5     g6     g7     B_P    B_N    B_B    B_R    B_Q
   /* W_PAWN_DIAG */ {false, false, false, false, false, false, false, false, false, false, false, false, false},
-  /* W_PAWN_PAIR */ { true, false, false, false, false, false, false, false,  true, false, false, false, false},
+  /* W_PAWN_PAIR */ {false, false, false, false, false, false, false, false, false, false, false, false, false},
   /* W_KNIGHT    */ {false,  true, false, false, false, false, false, false, false,  true, false, false, false},
   /* W_BISHOP    */ {false, false,  true, false, false, false, false, false, false, false,  true, false, false},
   /* W_ROOK      */ {false, false, false,  true, false, false, false, false, false, false, false,  true, false},
@@ -153,7 +153,7 @@ constexpr bool semi_map[ATTACK_TYPE_NB][TARGET_TYPE_NB] = {
   /* gap_6       */ {false, false, false, false, false, false, false, false, false, false, false, false, false},
   /* gap_7       */ {false, false, false, false, false, false, false, false, false, false, false, false, false},
   /* B_PAWN_DIAG */ {false, false, false, false, false, false, false, false, false, false, false, false, false},
-  /* B_PAWN_PAIR */ { true, false, false, false, false, false, false, false,  true, false, false, false, false},
+  /* B_PAWN_PAIR */ {false, false, false, false, false, false, false, false, false, false, false, false, false},
   /* B_KNIGHT    */ {false,  true, false, false, false, false, false, false, false,  true, false, false, false},
   /* B_BISHOP    */ {false, false,  true, false, false, false, false, false, false, false,  true, false, false},
   /* B_ROOK      */ {false, false, false,  true, false, false, false, false, false, false, false,  true, false},
@@ -244,7 +244,7 @@ constexpr auto threatfeaturecalc = []() {
 
 constexpr ThreatOffsetTable threatoffsets  = threatfeaturecalc.table;
 constexpr int               threatfeatures = threatfeaturecalc.totalfeatures;
-static_assert(threatfeatures == 62784);
+static_assert(threatfeatures == 59808);
 
 struct FullThreats {
     static constexpr std::string_view NAME = "Full_Threats";
@@ -253,7 +253,7 @@ struct FullThreats {
     static constexpr int COLOR_NB            = 2;
     static constexpr int MAX_ACTIVE_FEATURES = 224;
 
-    static constexpr int INPUTS = threatfeatures;  // 63,312
+    static constexpr int INPUTS = threatfeatures;
 
     // clang-format off
     static constexpr Square OrientTBL[COLOR_NB][SQUARE_NB] = {
@@ -346,7 +346,7 @@ struct FullThreats {
                 auto       allPawns = pos.piecesBB(whitePawn) | pos.piecesBB(blackPawn);
 
                 // Diagonal pawn threats exclude pawn targets (pawn-on-pawn co-presence
-                // is captured by the PAWN_PAIR features below).
+                // is captured by PP_3Wide).
                 auto diagTargets = piecesNoK & ~allPawns;
 
                 auto right    = (c == Color::White) ? Offset(1, 1)  : Offset(-1, -1);
@@ -367,21 +367,6 @@ struct FullThreats {
                     TargetType tt    = make_target_type(pos.pieceAt(to));
                     int        index = threat_index(color, at_diag, from, to, tt, ksq);
                     if (index >= 0) { features[k++] = index; }
-                }
-                // ---- Pawn pairs (any colors, files at most 1 apart) ----
-                // Both directed entries of every pair are produced across the two
-                // color loops (and within this loop for same-color pairs); the
-                // semi-exclusion in threat_index keeps exactly one per perspective.
-                AttackType at_pair = (c == Color::White) ? W_PAWN_PAIR_AT : B_PAWN_PAIR_AT;
-                for (Square from : bb)
-                {
-                    Bitboard targets = Bitboard::fromBits(pawn_pair_mask((int) from)) & allPawns;
-                    for (Square to : targets)
-                    {
-                        TargetType tt    = make_target_type(pos.pieceAt(to));
-                        int        index = threat_index(color, at_pair, from, to, tt, ksq);
-                        if (index >= 0) { features[k++] = index; }
-                    }
                 }
             }
 
@@ -415,6 +400,91 @@ struct FullThreatsExtractor: IFeatureExtractor {
                                              int*                     features,
                                              Color                    color) const override {
         return FullThreats::fill_features_sparse(e, features, color);
+    }
+};
+
+struct PP_3Wide {
+    static constexpr std::string_view NAME = "PP_3Wide";
+
+    static constexpr int PAWN_IDS            = 2 * 48;
+    static constexpr int INPUTS              = PAWN_IDS * (PAWN_IDS - 1) / 2;
+    static constexpr int MAX_ACTIVE_FEATURES = 128;
+
+    static int make_pawn_id(Color color, Square square) {
+        return 48 * static_cast<int>(color) + static_cast<int>(square) - static_cast<int>(a2);
+    }
+
+    static int make_index(Color perspective,
+                          Color color,
+                          Square from,
+                          Square to,
+                          Color paired_color,
+                          Square ksq) {
+        int orient = static_cast<int>(FullThreats::OrientTBL[static_cast<int>(perspective)]
+                                                             [static_cast<int>(ksq)]);
+        Square from_oriented = static_cast<Square>(static_cast<int>(from) ^ orient);
+        Square to_oriented   = static_cast<Square>(static_cast<int>(to) ^ orient);
+
+        Color color_oriented =
+          static_cast<Color>(static_cast<int>(color) ^ static_cast<int>(perspective));
+        Color paired_color_oriented =
+          static_cast<Color>(static_cast<int>(paired_color) ^ static_cast<int>(perspective));
+
+        if (from_oriented < a2 || from_oriented > h7 || to_oriented < a2 || to_oriented > h7)
+            return INPUTS;
+
+        int id_a = make_pawn_id(color_oriented, from_oriented);
+        int id_b = make_pawn_id(paired_color_oriented, to_oriented);
+        int hi   = std::max(id_a, id_b);
+        int lo   = std::min(id_a, id_b);
+
+        return hi * (hi - 1) / 2 + lo;
+    }
+
+    static std::pair<int, int>
+    fill_features_sparse(const TrainingDataEntry& e, int* features, Color color) {
+        auto& pos      = e.pos;
+        auto  allPawns = pos.piecesBB(whitePawn) | pos.piecesBB(blackPawn);
+        auto  ksq      = pos.kingSquare(color);
+        Color order[2][2] = {{Color::White, Color::Black}, {Color::Black, Color::White}};
+        int   k        = 0;
+
+        for (int i = static_cast<int>(Color::White); i <= static_cast<int>(Color::Black); ++i)
+        {
+            Color c  = order[static_cast<int>(color)][i];
+            Piece p  = Piece(PieceType::Pawn, c);
+            Bitboard bb = pos.piecesBB(p);
+
+            for (Square from : bb)
+            {
+                Bitboard targets = Bitboard::fromBits(pawn_pair_mask(static_cast<int>(from))) & allPawns;
+                for (Square to : targets)
+                {
+                    if (from < to)
+                        continue;
+
+                    Color paired_color = pos.pieceAt(to).color();
+                    int   index        = make_index(color, c, from, to, paired_color, ksq);
+                    if (index < INPUTS)
+                    {
+                        features[k] = index;
+                        ++k;
+                    }
+                }
+            }
+        }
+
+        return {k, INPUTS};
+    }
+};
+
+struct PP_3WideExtractor: IFeatureExtractor {
+    int inputs() const override { return PP_3Wide::INPUTS; }
+    int max_active_features() const override { return PP_3Wide::MAX_ACTIVE_FEATURES; }
+    std::pair<int, int> fill_features_sparse(const TrainingDataEntry& e,
+                                             int*                     features,
+                                             Color                    color) const override {
+        return PP_3Wide::fill_features_sparse(e, features, color);
     }
 };
 
@@ -465,6 +535,8 @@ static std::unique_ptr<IFeatureExtractor> make_single_extractor(std::string_view
         return std::make_unique<HalfKAv2_hmExtractor>();
     if (name == "Full_Threats")
         return std::make_unique<FullThreatsExtractor>();
+    if (name == "PP_3Wide")
+        return std::make_unique<PP_3WideExtractor>();
     return nullptr;
 }
 
