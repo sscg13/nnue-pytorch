@@ -37,8 +37,6 @@ class LayerStacks(nn.Module):
     ):
         l1c_ = self.l1(x, ls_indices, fake_quantize_weights)
 
-        # Extract the short-path skip connection before fake quantization
-        l1x_out = l1c_[:, -2].view(-1, 1) - l1c_[:, -1].view(-1, 1)
         l1x_ = l1c_
 
         l1_sqr = torch.pow(l1x_, 2.0)
@@ -72,10 +70,7 @@ class LayerStacks(nn.Module):
 
         l3c_ = self.output(l3_input, ls_indices, fake_quantize_weights)
 
-        if fake_quantize_acts:
-            l1x_out = self.quantization.fake_quantize_skip_act(l1x_out)
-
-        l3x_ = l3c_ + l1x_out
+        l3x_ = l3c_
         if fake_quantize_acts:
             l3x_ = self.quantization.fake_quantize_output(l3x_)
 

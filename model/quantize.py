@@ -125,10 +125,6 @@ class QuantizationManager:
         act_scale = self.config.hidden_quantized_one
         return _fake_quantize_acts(preact, act_scale)
 
-    def fake_quantize_skip_act(self, preact):
-        # currently no separate quantization necessary, but might be necessary in the future if quant schemes change.
-        return preact
-
     def fake_quantize_output(self, preact: torch.Tensor) -> torch.Tensor:
         multiplier_int = int(self.config.nnue2score * self.config.weight_scale_out)
         denominator_int = int(self.config.hidden_quantized_one * self.config.weight_scale_l_out * 2.0)
