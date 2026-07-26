@@ -2,6 +2,7 @@ import math
 import re
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 import chess
@@ -254,13 +255,18 @@ def compute_correlation(cmp_evals, ref_evals, fens, title, cmp_name, ref_name):
 def eval_engine_batch(engine_path, net_path, fens):
     if not fens:
         return []
+
+    engine_net_path = str(Path(net_path).resolve())
+    if engine_path.lower().endswith(".exe") and engine_net_path.startswith("/mnt/"):
+        engine_net_path = f"{engine_net_path[5].upper()}:{engine_net_path[6:]}"
+
     engine = subprocess.Popen(
         [engine_path],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         universal_newlines=True,
     )
-    parts = ["uci", f"setoption name EvalFile value {net_path}"]
+    parts = ["uci", f"setoption name EvalFile value {engine_net_path}"]
     for fen in fens:
         parts.append(f"position fen {fen}")
         parts.append("eval")
@@ -291,7 +297,7 @@ def main():
     cross_check_config = args.cross_check_config
     nnue_lightning_config = args.nnue_lightning_config
 
-    batch_size = 1024
+    batch_size = min(1024, cross_check_config.count)
 
     ckpt_model = None
     if cross_check_config.checkpoint:

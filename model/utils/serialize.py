@@ -146,8 +146,8 @@ class NNUEWriter:
             layer_hash ^= prev_hash >> 1
             layer_hash ^= (prev_hash << 31) & 0xFFFFFFFF
             if layer.out_features // model.num_ls_buckets != 1:
-                # Clipped ReLU hash
-                layer_hash = (layer_hash + 0x538D24C7) & 0xFFFFFFFF
+                # Quantmoid4 hash
+                layer_hash = (layer_hash + 0x7B3C12D8) & 0xFFFFFFFF
             prev_hash = layer_hash
         return layer_hash
 

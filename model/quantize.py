@@ -55,6 +55,31 @@ def _fake_quantize_weights(value, weight_scale):
 
     return value
 
+
+def _fake_quantmoid4(value: torch.Tensor, act_scale: float) -> torch.Tensor:
+    """Evaluate Quantmoid4 on the signed hidden-activation integer grid.
+
+    ``act_scale`` is 128 for the later layers.  Quantizing the signed value
+    before taking its magnitude is important: it matches the arithmetic right
+    shift performed by the engine for negative preactivations.
+    """
+    quantized_input = value.mul(act_scale).add(FAKE_QUANTIZE_EPS).floor()
+    quantized_input = quantized_input.clamp(-127, 127)
+
+    distance = 127 - quantized_input.abs()
+    lower_half = distance.square().div(256, rounding_mode="floor")
+    output_hard = torch.where(
+        quantized_input < 0,
+        lower_half,
+        126 - lower_half,
+    ).div(act_scale)
+
+    # Quantmoid4 approximates (126 / 128) * sigmoid(4 * 128 * x / 127).
+    # Keep that smooth derivative while using the exact integer forward pass.
+    slope = 4.0 * act_scale / 127.0
+    output_surrogate = torch.sigmoid(value.mul(slope)).mul(126.0 / act_scale)
+    return output_hard.detach() + (output_surrogate - output_surrogate.detach())
+
 @dataclass
 class QuantizationConfig:
     nnue2score: float = 600.0
@@ -125,6 +150,9 @@ class QuantizationManager:
     def fake_quantize_ls_act(self, preact):
         act_scale = self.config.hidden_quantized_one
         return _fake_quantize_acts(preact, act_scale)
+
+    def fake_quantmoid4(self, preact: torch.Tensor) -> torch.Tensor:
+        return _fake_quantmoid4(preact, self.config.hidden_quantized_one)
 
     def fake_quantize_skip_act(self, preact):
         # currently no separate quantization necessary, but might be necessary in the future if quant schemes change.
