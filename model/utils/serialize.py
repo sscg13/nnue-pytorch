@@ -96,6 +96,7 @@ def decode_leb_128_array(arr: bytes, n: int) -> npt.NDArray:
 
 # hardcoded for now
 VERSION = 0x6A448AFA
+FEATURE_TRANSFORMER_FORMAT_HASH = 0xF2E0D51B
 DEFAULT_DESCRIPTION = "Network trained with the https://github.com/official-stockfish/nnue-pytorch trainer."
 
 
@@ -118,8 +119,9 @@ class NNUEWriter:
         self.verbose = verbose
 
         fc_hash = self.fc_hash(model)
-        self.write_header(model, fc_hash, description)
-        self.int32(model.feature_hash ^ (model.L1 * 2))  # Feature transformer hash
+        feature_transformer_hash = self.feature_transformer_hash(model)
+        self.write_header(model, fc_hash, feature_transformer_hash, description)
+        self.int32(feature_transformer_hash)
         self.write_feature_transformer(model, ft_compression)
         layer_stacks = model.layer_stacks
         for bucket, (l1, l2, output) in enumerate(layer_stacks.get_coalesced_layer_stacks()):
@@ -151,9 +153,15 @@ class NNUEWriter:
             prev_hash = layer_hash
         return layer_hash
 
-    def write_header(self, model: NNUEModel, fc_hash: int, description: str) -> None:
+    @staticmethod
+    def feature_transformer_hash(model: NNUEModel) -> int:
+        return model.feature_hash ^ (model.L1 * 2) ^ FEATURE_TRANSFORMER_FORMAT_HASH
+
+    def write_header(
+        self, model: NNUEModel, fc_hash: int, feature_transformer_hash: int, description: str
+    ) -> None:
         self.int32(VERSION)  # version
-        self.int32(fc_hash ^ model.feature_hash ^ (model.L1 * 2))  # halfkp network hash
+        self.int32(fc_hash ^ feature_transformer_hash)  # halfkp network hash
         encoded_description = description.encode("utf-8")
         self.int32(len(encoded_description))  # Network definition
         self.buf.extend(encoded_description)
@@ -181,7 +189,6 @@ class NNUEWriter:
         # Get export weights (coalesced + remapped 12→11 piece types)
         export_weight = layer.get_export_weights()
         weight = export_weight[:, : model.L1]
-        psqt_weight = export_weight[:, model.L1 :]
 
         # biases are exported as i16s
         biases = model.quantization.quantize_feature_transformer_bias(
@@ -198,16 +205,14 @@ class NNUEWriter:
 
             ft_histogram_callback = get_histogram_callback(f.FEATURE_NAME, self.verbose)
             segment_weight = weight[offset : offset + n]
-            segment_psqt_weight = psqt_weight[offset : offset + n]
-            segment_weight, segment_psqt_weight = model.quantization.quantize_feature_transformer_weights(
-                segment_weight, segment_psqt_weight, f_export_dtype, ft_histogram_callback
+            segment_weight = model.quantization.quantize_feature_transformer_weights(
+                segment_weight, f_weight_export_dtype=f_export_dtype, callback=ft_histogram_callback
             )
             # compression is only useful for types larger than 1 byte
             segment_compression = ft_compression if f_export_dtype != torch.int8 else "none"
             offset += n
 
             self.write_tensor(segment_weight, segment_compression)
-            self.write_tensor(segment_psqt_weight, ft_compression)
 
 
     def write_fc_layer(
@@ -258,12 +263,10 @@ class NNUEReader:
         fc_hash = NNUEWriter.fc_hash(self.model)
 
         self.read_header(self.model.feature_hash, fc_hash)
-        self.read_int32(
-            self.model.feature_hash ^ (self.config.L1 * 2)
-        )  # Feature transformer hash
+        self.read_int32(NNUEWriter.feature_transformer_hash(self.model))
         self.model.zero_virtual_weights()
 
-        self.read_feature_transformer(self.model.input, self.model.num_psqt_buckets)
+        self.read_feature_transformer(self.model.input)
 
         layers = [
             self.model.layer_stacks.l1,
@@ -291,7 +294,7 @@ class NNUEReader:
 
     def read_header(self, feature_hash: int, fc_hash: int) -> None:
         self.read_int32(VERSION)  # version
-        self.read_int32(fc_hash ^ feature_hash ^ (self.config.L1 * 2))
+        self.read_int32(fc_hash ^ NNUEWriter.feature_transformer_hash(self.model))
         desc_len = self.read_int32()
         self.description = self.f.read(desc_len).decode("utf-8")
 
@@ -337,37 +340,21 @@ class NNUEReader:
         else:
             raise ValueError("Invalid compression method.")
 
-    def read_feature_transformer(self, layer, num_psqt_buckets: int) -> None:
-        num_outputs = layer.num_outputs
-        L1 = num_outputs - num_psqt_buckets
-
-        bias = self.tensor(np.int16, [L1])
+    def read_feature_transformer(self, layer) -> None:
+        bias = self.tensor(np.int16, [layer.num_outputs])
         segments = []
-        segments_psqt = []
 
         for feature in layer.features:
             dtype = np.int8 if feature.EXPORT_WEIGHT_DTYPE == torch.int8 else np.int16
-            s = self.tensor(dtype, [feature.NUM_REAL_FEATURES, L1])
+            s = self.tensor(dtype, [feature.NUM_REAL_FEATURES, layer.num_outputs])
             segments.append(s)
-            s_psqt = self.tensor(np.int32, [feature.NUM_REAL_FEATURES, num_psqt_buckets])
-            segments_psqt.append(s_psqt)
 
         weight = torch.cat(segments, dim=0)
-        psqt_weight = torch.cat(segments_psqt, dim=0)
 
-        bias, weight, psqt_weight = (
-            self.model.quantization.dequantize_feature_transformer(
-                bias, weight, psqt_weight
-            )
-        )
+        bias, weight = self.model.quantization.dequantize_feature_transformer(bias, weight)
 
-        # Combine weight and psqt_weight into export format, then expand
-        layer.bias.data = torch.cat([
-            bias.to(torch.float32),
-            torch.zeros(num_psqt_buckets, dtype=torch.float32)
-        ])
-        export_weight = torch.cat([weight.to(torch.float32), psqt_weight.to(torch.float32)], dim=1)
-        layer.load_export_weights(export_weight)
+        layer.bias.data = bias.to(torch.float32)
+        layer.load_export_weights(weight.to(torch.float32))
 
     def read_fc_layer(
         self,

@@ -540,17 +540,14 @@ def eval_ft(model: NNUEModel, batch: Iterable[torch.Tensor], device_str: str) ->
             _score,
             piece_count,
         ) = batch_tuple
-        psqt_indices, _  = model.calculate_buckets(piece_count)
-        l0_, wpsqt, bpsqt = model.forward_ft(
+        l0_ = model.forward_ft(
             us,
             them,
             white_indices,
             black_indices,
-            psqt_indices,
             fake_quantize_acts=True,
             fake_quantize_weights=True,
         )
-        _, _ = wpsqt, bpsqt
         return l0_
 
 @torch.no_grad()
