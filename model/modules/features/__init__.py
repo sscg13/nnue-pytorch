@@ -8,15 +8,17 @@ import tyro
 from .full_threats import FullThreats
 from .halfka_v2_hm import HalfKav2Hm
 from .input_feature import InputFeature
+from .p_hm import PHm
 from .pp_3wide import PP3Wide
 
 _FEATURE_COMPONENTS: dict[str, type[InputFeature]] = {
     "HalfKAv2_hm^": HalfKav2Hm,
     "Full_Threats": FullThreats,
     "PP_3Wide": PP3Wide,
+    "P_hm": PHm,
 }
 
-DEFAULT_FEATURES = "Full_Threats+PP_3Wide+HalfKAv2_hm^"
+DEFAULT_FEATURES = "P_hm"
 
 
 def get_feature_cls(name: str) -> list[Callable[[int], InputFeature]]:
@@ -57,6 +59,7 @@ __all__ = [
     "HalfKav2Hm",
     "InputFeature",
     "PP3Wide",
+    "PHm",
     "add_feature_args",
     "get_available_features",
     "get_feature_cls",

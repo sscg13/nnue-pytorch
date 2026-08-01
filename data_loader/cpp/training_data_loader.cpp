@@ -72,6 +72,41 @@ struct HalfKAv2_hm {
     }
 };
 
+struct P_hm {
+    static constexpr std::string_view NAME = "P_hm";
+    static constexpr int              INPUTS = 12 * 64;
+    static constexpr int              MAX_ACTIVE_FEATURES = 32;
+
+    static int feature_index(Color color, Square ksq, Square sq, Piece p) {
+        return static_cast<int>(orient_flip_2(color, sq, ksq))
+             + (static_cast<int>(p.type()) + 6 * (p.color() != color)) * 64;
+    }
+
+    static std::pair<int, int>
+    fill_features_sparse(const TrainingDataEntry& e, int* features, Color color) {
+        auto& pos    = e.pos;
+        auto  pieces = pos.piecesBB();
+        auto  ksq    = pos.kingSquare(color);
+
+        int j = 0;
+        for (Square sq : pieces) {
+            features[j] = feature_index(color, ksq, sq, pos.pieceAt(sq));
+            ++j;
+        }
+        return {j, INPUTS};
+    }
+};
+
+struct P_hmExtractor: IFeatureExtractor {
+    int inputs() const override { return P_hm::INPUTS; }
+    int max_active_features() const override { return P_hm::MAX_ACTIVE_FEATURES; }
+    std::pair<int, int> fill_features_sparse(const TrainingDataEntry& e,
+                                             int* features,
+                                             Color color) const override {
+        return P_hm::fill_features_sparse(e, features, color);
+    }
+};
+
 struct HalfKAv2_hmExtractor: IFeatureExtractor {
     int inputs() const override { return HalfKAv2_hm::INPUTS; }
     int max_active_features() const override { return HalfKAv2_hm::MAX_ACTIVE_FEATURES; }
@@ -433,6 +468,8 @@ struct ComposedFeatureExtractor: IFeatureExtractor {
 static std::unique_ptr<IFeatureExtractor> make_single_extractor(std::string_view name) {
     if (name == "HalfKAv2_hm")
         return std::make_unique<HalfKAv2_hmExtractor>();
+    if (name == "P_hm")
+        return std::make_unique<P_hmExtractor>();
     if (name == "Full_Threats")
         return std::make_unique<FullThreatsExtractor>();
     if (name == "PP_3Wide")
