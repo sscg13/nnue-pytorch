@@ -125,7 +125,7 @@ class ComposedFeatureTransformer(nn.Module):
         merged, bias = self.merged_weight_and_bias(
             fake_quantize_weights
         )
-        ft_max_act = self.quantization.max_ft_activation
+        max_ft_product = self.quantization.max_ft_product
 
         l0_, wpsqt, bpsqt = double_feature_transform(
             us,
@@ -135,7 +135,7 @@ class ComposedFeatureTransformer(nn.Module):
             psqt_indices,
             merged,
             bias,
-            ft_max_act,
+            max_ft_product,
             self.l1_size,
             backend,
         )

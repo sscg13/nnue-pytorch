@@ -65,7 +65,7 @@ def test_fused_double_ft(l1):
         psqt_indices,
         weight,
         bias,
-        127.0,  # max_ft_activation
+        0.9921875,  # max_ft_product (127/128)
         l1,     # l1_size
         "fused",
     )
@@ -88,7 +88,7 @@ def test_fused_double_ft(l1):
         psqt_indices,
         weight,
         bias,
-        127.0,  # max_ft_activation
+        0.9921875,  # max_ft_product (127/128)
         l1,     # l1_size
         "torch",
     )

@@ -12,7 +12,7 @@ def double_feature_transform(
     psqt_indices: torch.Tensor,
     weight: torch.Tensor,
     bias: torch.Tensor,
-    max_ft_activation: float,
+    max_ft_product: float,
     l1_size: int,
     backend: str = "auto",
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -47,7 +47,7 @@ def double_feature_transform(
             psqt_indices,
             weight,
             bias,
-            max_ft_activation,
+            max_ft_product,
             l1_size,
         )
     elif impl in ("sparse", "torch"):
@@ -71,11 +71,13 @@ def double_feature_transform(
 
         l0_ = (us * torch.cat([w, b], dim=1)) + (them * torch.cat([b, w], dim=1))
         # do not fake quantize sum of (quantized) weights
-        l0_ = torch.clamp(l0_, 0.0, max_ft_activation)
+        # Only the lower bound applies to the operands; the upper clamp acts on
+        # the pairwise product instead, matching min(x*y >> 9, 127) at inference.
+        l0_ = torch.clamp(l0_, min=0.0)
 
         l0_s = torch.split(l0_, l1_size // 2, dim=1)
         l0_s1 = [l0_s[0] * l0_s[1], l0_s[2] * l0_s[3]]
-        l0_ = torch.cat(l0_s1, dim=1)
+        l0_ = torch.clamp(torch.cat(l0_s1, dim=1), max=max_ft_product)
 
         return l0_, wpsqt, bpsqt
     else:

@@ -32,7 +32,7 @@ void fused_double_ft_forward(
     const int64_t* __restrict__ psqt_indices,
     const float* __restrict__ weight,
     const float* __restrict__ bias,
-    const float          max_ft_act,
+    const float          max_ft_prod,
           float* __restrict__ l0_out,
           float* __restrict__ wpsqt_out,
           float* __restrict__ bpsqt_out,
@@ -83,13 +83,19 @@ void fused_double_ft_forward(
         float l0_b0 = us_val * b0 + them_val * w0;
         float l0_b1 = us_val * b1 + them_val * w1;
 
-        if (l0_w0 < 0.0f) l0_w0 = 0.0f; else if (l0_w0 > max_ft_act) l0_w0 = max_ft_act;
-        if (l0_w1 < 0.0f) l0_w1 = 0.0f; else if (l0_w1 > max_ft_act) l0_w1 = max_ft_act;
-        if (l0_b0 < 0.0f) l0_b0 = 0.0f; else if (l0_b0 > max_ft_act) l0_b0 = max_ft_act;
-        if (l0_b1 < 0.0f) l0_b1 = 0.0f; else if (l0_b1 > max_ft_act) l0_b1 = max_ft_act;
+        if (l0_w0 < 0.0f) l0_w0 = 0.0f;
+        if (l0_w1 < 0.0f) l0_w1 = 0.0f;
+        if (l0_b0 < 0.0f) l0_b0 = 0.0f;
+        if (l0_b1 < 0.0f) l0_b1 = 0.0f;
 
-        l0_out[block_idx * l1_size + i] = l0_w0 * l0_w1;
-        l0_out[block_idx * l1_size + l1_half + i] = l0_b0 * l0_b1;
+        // The operands are unbounded above; only their product is clamped.
+        float prod_w = l0_w0 * l0_w1;
+        float prod_b = l0_b0 * l0_b1;
+        if (prod_w > max_ft_prod) prod_w = max_ft_prod;
+        if (prod_b > max_ft_prod) prod_b = max_ft_prod;
+
+        l0_out[block_idx * l1_size + i] = prod_w;
+        l0_out[block_idx * l1_size + l1_half + i] = prod_b;
 
         const uint32_t clamp_base = block_idx * 4 * l1_half;
         clamped_out[clamp_base + 0 * l1_half + i] = l0_w0;
@@ -152,7 +158,7 @@ void fused_double_ft_backward(
     const int64_t* __restrict__ psqt_indices,
     const float* __restrict__ weight,
     const float* __restrict__ bias,
-    const float          max_ft_act,
+    const float          max_ft_prod,
     const float* __restrict__ grad_l0,
     const float* __restrict__ grad_wpsqt,
     const float* __restrict__ grad_bpsqt,
@@ -212,10 +218,17 @@ void fused_double_ft_backward(
             float gl0_i    = __ldg(&grad_l0[block_idx * l1_size + i]);
             float gl0_i_h  = __ldg(&grad_l0[block_idx * l1_size + l1_half + i]);
 
-            float dw0 = (clamped_w0 == 0.0f || clamped_w0 == max_ft_act) ? 0.0f : gl0_i   * clamped_w1;
-            float dw1 = (clamped_w1 == 0.0f || clamped_w1 == max_ft_act) ? 0.0f : gl0_i   * clamped_w0;
-            float db0 = (clamped_b0 == 0.0f || clamped_b0 == max_ft_act) ? 0.0f : gl0_i_h * clamped_b1;
-            float db1 = (clamped_b1 == 0.0f || clamped_b1 == max_ft_act) ? 0.0f : gl0_i_h * clamped_b0;
+            // d(min(w0*w1, max))/dw0 is w1 unless w0 was clamped to zero or the
+            // product saturated; likewise for the other three operands.
+            float prod_w = clamped_w0 * clamped_w1;
+            float prod_b = clamped_b0 * clamped_b1;
+            bool  sat_w  = prod_w > max_ft_prod;
+            bool  sat_b  = prod_b > max_ft_prod;
+
+            float dw0 = (clamped_w0 == 0.0f || sat_w) ? 0.0f : gl0_i   * clamped_w1;
+            float dw1 = (clamped_w1 == 0.0f || sat_w) ? 0.0f : gl0_i   * clamped_w0;
+            float db0 = (clamped_b0 == 0.0f || sat_b) ? 0.0f : gl0_i_h * clamped_b1;
+            float db1 = (clamped_b1 == 0.0f || sat_b) ? 0.0f : gl0_i_h * clamped_b0;
 
             g_w0[s] = us_val * dw0 + them_val * db0;
             g_w1[s] = us_val * dw1 + them_val * db1;

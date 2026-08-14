@@ -64,7 +64,6 @@ class QuantizationConfig:
     weight_scale_out: float = 16.0
     weight_quantized_max_hidden: float = 127.0 # i8 max
     ft_quantized_one: float = 256.0
-    ft_quantized_max: float = 255.0 # limited to 255 for safe squaring within i16
     hidden_quantized_one: float = 128.0
     hidden_quantized_max: float = 127.0 # i8 max
 
@@ -97,7 +96,10 @@ class QuantizationManager:
 
         self.l0_correction_factor = config.ft_quantized_one ** 2 / config.inference_l0_division_factor / self.hidden_quantized_one
         self.sqr_crelu_correction_factor = config.hidden_quantized_one / config.inference_sqr_crelu_division_factor
-        self.max_ft_activation = config.ft_quantized_max / config.ft_quantized_one
+        # The FT operands are not clamped from above; only their pairwise product
+        # is, to the int8 range the following affine layer consumes. Inference
+        # computes min(max(x,0) * max(y,0) >> 9, 127) in 16-bit lanes.
+        self.max_ft_product = config.hidden_quantized_max / config.hidden_quantized_one
         self.max_hidden_activation = config.hidden_quantized_max / config.hidden_quantized_one
 
         self.weight_scales_dict = {
@@ -112,8 +114,8 @@ class QuantizationManager:
             "ls_output_bias" : self.weight_scale_hidden[2] * self.hidden_quantized_one,
         }
 
-    def clip_ft_act(self, preact):
-        return torch.clamp(preact, 0.0, self.max_ft_activation)
+    def clip_ft_product(self, product):
+        return torch.clamp(product, 0.0, self.max_ft_product)
 
     def clip_ls_act(self, preact):
         return torch.clamp(preact, 0, self.max_hidden_activation)

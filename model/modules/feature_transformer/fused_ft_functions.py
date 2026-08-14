@@ -16,8 +16,8 @@ except (ImportError, OSError, RuntimeError):
 
 class FusedDoubleFtFunction(autograd.Function):
     @staticmethod
-    def forward(ctx, us, them, white_indices, black_indices, psqt_indices, weight, bias, max_ft_activation, l1_size):
-        ctx.max_ft_activation = float(max_ft_activation)
+    def forward(ctx, us, them, white_indices, black_indices, psqt_indices, weight, bias, max_ft_product, l1_size):
+        ctx.max_ft_product = float(max_ft_product)
         ctx.l1_size = int(l1_size)
 
         assert l1_size % 2 == 0
@@ -65,7 +65,7 @@ class FusedDoubleFtFunction(autograd.Function):
                 psqt_indices.data_ptr(),
                 weight.data_ptr(),
                 bias.data_ptr(),
-                np.float32(max_ft_activation),
+                np.float32(max_ft_product),
                 l0_.data_ptr(),
                 wpsqt.data_ptr(),
                 bpsqt.data_ptr(),
@@ -80,7 +80,7 @@ class FusedDoubleFtFunction(autograd.Function):
     @staticmethod
     def backward(ctx, grad_l0, grad_wpsqt, grad_bpsqt):
         us, them, white_indices, black_indices, psqt_indices, weight, bias, clamped_out = ctx.saved_tensors
-        max_ft_activation = ctx.max_ft_activation
+        max_ft_product = ctx.max_ft_product
         l1_size = ctx.l1_size
 
         grad_l0 = grad_l0.contiguous()
@@ -107,7 +107,7 @@ class FusedDoubleFtFunction(autograd.Function):
                 psqt_indices.data_ptr(),
                 weight.data_ptr(),
                 bias.data_ptr(),
-                np.float32(max_ft_activation),
+                np.float32(max_ft_product),
                 grad_l0.data_ptr(),
                 grad_wpsqt.data_ptr(),
                 grad_bpsqt.data_ptr(),

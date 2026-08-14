@@ -95,7 +95,7 @@ def decode_leb_128_array(arr: bytes, n: int) -> npt.NDArray:
 
 
 # hardcoded for now
-VERSION = 0x6A448AFA
+VERSION = 0x6A448AFB
 DEFAULT_DESCRIPTION = "Network trained with the https://github.com/official-stockfish/nnue-pytorch trainer."
 
 
