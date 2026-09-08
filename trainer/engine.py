@@ -190,7 +190,7 @@ class SimpleTrainer:
         if self._ddp_model is not None:
             # DDP wraps the inner NNUEModel; run its forward to get scorenet,
             # then compute the loss on the plain NNUE object.
-            us, them, white_indices, black_indices, _outcome, _score, piece_count = batch
+            us, them, white_indices, black_indices, _outcome, _score, piece_count, rule50 = batch
             scorenet = self._ddp_model(
                 us,
                 them,
@@ -199,6 +199,7 @@ class SimpleTrainer:
                 piece_count,
                 self.model.config.use_fake_act_quantization,
                 self.model.config.use_fake_weight_quantization,
+                rule50=rule50,
             )
             loss = _unwrap_module(self.model).compute_loss_with_scorenet(
                 scorenet, batch, self.global_step

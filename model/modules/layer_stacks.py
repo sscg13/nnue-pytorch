@@ -6,6 +6,7 @@ from torch import nn
 from ..quantize import QuantizationManager
 from .config import LayerStacksConfig
 from .stacked_linear import FactorizedStackedLinear, StackedLinear
+from .rule50 import Rule50Embedding
 
 
 class LayerStacks(nn.Module):
@@ -17,6 +18,12 @@ class LayerStacks(nn.Module):
         self.L2 = config.L2
         self.L3 = config.L3
         self.quantization = quantization
+        self.rule50_mode = config.rule50
+        self.rule50 = None
+        if config.rule50 in ("hidden1", "hidden2"):
+            key = "ls_l1_bias" if config.rule50 == "hidden1" else "ls_l2_bias"
+            width = self.L2 if config.rule50 == "hidden1" else self.L3
+            self.rule50 = Rule50Embedding(width, quantization.weight_scales_dict[key], count)
 
         # Factorizer only for the first layer because later
         # there's a non-linearity and factorization breaks.
@@ -35,8 +42,11 @@ class LayerStacks(nn.Module):
         ls_indices: torch.Tensor,
         fake_quantize_acts: bool=True,
         fake_quantize_weights: bool=True,
+        rule50: torch.Tensor | None = None,
     ):
         l1c_ = self.l1(x, ls_indices, fake_quantize_weights)
+        if self.rule50_mode == "hidden1":
+            l1c_ = l1c_ + self.rule50(rule50, ls_indices, fake_quantize_weights)
 
         # Extract the short-path skip connection before fake quantization
         l1x_out = l1c_[:, -2].view(-1, 1) - l1c_[:, -1].view(-1, 1)
@@ -55,6 +65,8 @@ class LayerStacks(nn.Module):
         l1x_ = self.quantization.clip_ls_act(l1x_)
 
         l2c_ = self.l2(l1x_, ls_indices, fake_quantize_weights)
+        if self.rule50_mode == "hidden2":
+            l2c_ = l2c_ + self.rule50(rule50, ls_indices, fake_quantize_weights)
         l2x_ = l2c_
 
         l2_sqr = torch.pow(l2x_, 2.0)

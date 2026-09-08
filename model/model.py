@@ -3,6 +3,7 @@ from torch import nn
 
 from .config import ModelConfig
 from .modules import ComposedFeatureTransformer, LayerStacks, get_feature_cls
+from .modules.rule50 import Rule50Embedding, RULE50_MODES
 from .quantize import QuantizationManager
 
 
@@ -20,6 +21,9 @@ class NNUEModel(nn.Module):
         self.L1 = config.L1
         self.L2 = config.L2
         self.L3 = config.L3
+        self.rule50 = config.rule50
+        if self.rule50 not in RULE50_MODES:
+            raise ValueError(f"Invalid rule50 placement: {self.rule50}")
 
         self.quantize_config = config.quantize_config
         self.quantization = QuantizationManager(config.quantize_config)
@@ -28,6 +32,8 @@ class NNUEModel(nn.Module):
         self.num_ls_buckets = num_ls_buckets
 
         self.input = ComposedFeatureTransformer(feature_cls, self.L1, self.num_psqt_buckets, self.quantization)
+        if self.rule50 == "ft":
+            self.input.rule50 = Rule50Embedding(self.L1, self.quantization.ft_quantized_one, ft=True)
         self.feature_name = self.input.FEATURE_NAME
         self.input_feature_name = self.input.INPUT_FEATURE_NAME
         self.feature_hash = self.input.HASH
@@ -86,6 +92,7 @@ class NNUEModel(nn.Module):
         psqt_indices: torch.Tensor,
         fake_quantize_acts: bool,
         fake_quantize_weights: bool,
+        rule50: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         return self.input(
             us,
@@ -95,6 +102,7 @@ class NNUEModel(nn.Module):
             psqt_indices,
             fake_quantize_acts,
             fake_quantize_weights,
+            rule50=rule50,
         )
 
     def calculate_buckets(self, piece_count: torch.Tensor):
@@ -113,6 +121,7 @@ class NNUEModel(nn.Module):
         piece_count: torch.Tensor,
         fake_quantize_acts: bool=True,
         fake_quantize_weights: bool=True,
+        rule50: torch.Tensor | None = None,
     ):
         psqt_indices, layer_stack_indices = self.calculate_buckets(piece_count)
 
@@ -124,10 +133,11 @@ class NNUEModel(nn.Module):
             psqt_indices,
             fake_quantize_acts,
             fake_quantize_weights,
+            rule50=rule50,
         )
         # The PSQT values are averaged over perspectives. "Their" perspective
         # has a negative influence (us-0.5 is 0.5 for white and -0.5 for black,
         # which does both the averaging and sign flip for black to move)
-        x = self.layer_stacks(l0_, layer_stack_indices, fake_quantize_acts, fake_quantize_weights) + (wpsqt - bpsqt) * (us - 0.5)
+        x = self.layer_stacks(l0_, layer_stack_indices, fake_quantize_acts, fake_quantize_weights, rule50=rule50) + (wpsqt - bpsqt) * (us - 0.5)
 
         return x

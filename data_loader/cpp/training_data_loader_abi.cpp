@@ -4,6 +4,8 @@
 using namespace binpack;
 using namespace chess;
 
+NNUE_API int NNUE_CDECL sparse_batch_abi_version() { return 2; }
+
 // TODO: We might want to introduce some exception safety to the abi.
 // Although for our uses it doesn't have priority.
 // Additionally the library could be quite unsafe since it reinterpret casts opaque pointers.

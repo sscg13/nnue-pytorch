@@ -14,6 +14,7 @@ from .quantize import QuantizationConfig
 class ModelConfig(LayerStacksConfig):
     @staticmethod
     def add_model_args(parser):
+        parser.add_argument("--rule50", choices=["none", "ft", "hidden1", "hidden2"], default="none")
         parser.add_argument(
             "--l1",
             dest="L1",
@@ -32,6 +33,7 @@ class ModelConfig(LayerStacksConfig):
         config = ModelConfig()
         config.L1 = args.L1
         config.L2 = args.L2
+        config.rule50 = args.rule50
         return config
 
     # Not omitting prefix on purpose.

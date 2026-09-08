@@ -12,6 +12,7 @@ from torch import nn
 
 from ..config import ModelConfig
 from ..model import NNUEModel
+from ..modules.rule50 import rule50_hash
 
 
 def ascii_hist(name, x, bins=7):
@@ -121,12 +122,16 @@ class NNUEWriter:
         self.write_header(model, fc_hash, description)
         self.int32(model.feature_hash ^ (model.L1 * 2))  # Feature transformer hash
         self.write_feature_transformer(model, ft_compression)
+        if model.input.rule50 is not None:
+            self.write_tensor(model.input.rule50.export(torch.int16), ft_compression)
         layer_stacks = model.layer_stacks
         for bucket, (l1, l2, output) in enumerate(layer_stacks.get_coalesced_layer_stacks()):
             self.int32(fc_hash)  # FC layers hash
             self.write_fc_layer(model, l1, layer_stacks.l1.layer_key, f"bucket {bucket}")
             self.write_fc_layer(model, l2, layer_stacks.l2.layer_key, f"bucket {bucket}")
             self.write_fc_layer(model, output, layer_stacks.output.layer_key, f"bucket {bucket}")
+            if layer_stacks.rule50 is not None:
+                self.write_tensor(layer_stacks.rule50.export(torch.int32)[bucket])
 
     @staticmethod
     def fc_hash(model: NNUEModel) -> int:
@@ -149,7 +154,7 @@ class NNUEWriter:
                 # Clipped ReLU hash
                 layer_hash = (layer_hash + 0x538D24C7) & 0xFFFFFFFF
             prev_hash = layer_hash
-        return layer_hash
+        return layer_hash ^ rule50_hash(model.rule50)
 
     def write_header(self, model: NNUEModel, fc_hash: int, description: str) -> None:
         self.int32(VERSION)  # version
@@ -264,6 +269,9 @@ class NNUEReader:
         self.model.zero_virtual_weights()
 
         self.read_feature_transformer(self.model.input, self.model.num_psqt_buckets)
+        if self.model.input.rule50 is not None:
+            table = self.model.input.rule50
+            table.load_export(self.tensor(np.int16, table.weight.shape))
 
         layers = [
             self.model.layer_stacks.l1,
@@ -288,6 +296,10 @@ class NNUEReader:
                     l_b_slices[layer_idx][b],
                     layers[layer_idx].layer_key,
                 )
+            if self.model.layer_stacks.rule50 is not None:
+                table = self.model.layer_stacks.rule50
+                with torch.no_grad():
+                    table.weight[b].copy_(self.tensor(np.int32, table.weight.shape[1:]) / table.scale)
 
     def read_header(self, feature_hash: int, fc_hash: int) -> None:
         self.read_int32(VERSION)  # version

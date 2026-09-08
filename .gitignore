@@ -12,4 +12,5 @@ pgo_data/
 bench
 bench_*
 !tests/**/*.py
+rule50-*.log
 

@@ -240,6 +240,12 @@ def main():
             nnue = torch.load(
                 args.resume_from_model, weights_only=False, map_location="cpu"
             )
+            actual_rule50 = getattr(nnue.model, "rule50", "none")
+            if actual_rule50 != args.nnue_lightning_config.model_config.rule50:
+                raise ValueError(
+                    f"Resume model uses --rule50 {actual_rule50}; match that option, "
+                    "or use initialize_rule50.py to add a clock embedding to a baseline."
+                )
             nnue.train()
         except ModuleNotFoundError as e:
             raise RuntimeError(
