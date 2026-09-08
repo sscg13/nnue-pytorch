@@ -12,6 +12,7 @@ struct FenBatchStream;
 struct SparseBatchStream;
 
 // batches
+NNUE_API int NNUE_CDECL sparse_batch_abi_version();
 NNUE_API SparseBatch* NNUE_CDECL get_sparse_batch_from_fens(const char*        feature_set_c,
                                         int                num_fens,
                                         const char* const* fens,

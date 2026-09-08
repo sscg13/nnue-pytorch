@@ -495,7 +495,7 @@ SparseBatch::SparseBatch(const IFeatureExtractor&              feature_set,
     size                = entries.size();
     max_active_features = feature_set.max_active_features();
     const size_t total_floats = size * 3;
-    const size_t total_ints   = size + size * max_active_features * 2;
+    const size_t total_ints   = size * 2 + size * max_active_features * 2;
 
     m_float_block = new float[total_floats];
     m_int_block   = new int[total_ints];
@@ -509,6 +509,7 @@ SparseBatch::SparseBatch(const IFeatureExtractor&              feature_set,
     white               = int_alloc.alloc(size * max_active_features);
     black               = int_alloc.alloc(size * max_active_features);
     piece_count         = int_alloc.alloc(size);
+    rule50              = int_alloc.alloc(size);
 
     num_active_white_features = 0;
     num_active_black_features = 0;
@@ -532,6 +533,7 @@ void SparseBatch::fill_entry(const IFeatureExtractor& fs, int i, const TrainingD
     outcome[i]             = (e.result + 1.0f) / 2.0f;
     score[i]               = e.score;
     piece_count[i]         = e.pos.piecesBB().count();
+    rule50[i]              = e.pos.rule50Counter();
     fill_features(fs, i, e);
 }
 

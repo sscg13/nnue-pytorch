@@ -179,6 +179,12 @@ class NNUE(nn.Module):
             },
         ]
 
+        if self.model.layer_stacks.rule50 is not None:
+            train_params.append({
+                "params": list(self.model.layer_stacks.rule50.parameters()),
+                "lr": optimizer_config.lr,
+                "weight_decay": 0.0,
+            })
         return self.optimizer_wrapper.configure_optimizers(train_params)
 
     # --- train / eval switch ---
@@ -322,6 +328,7 @@ class NNUE(nn.Module):
             _outcome,
             _score,
             piece_count,
+            rule50,
         ) = batch
         scorenet = self.model(
             us,
@@ -331,6 +338,7 @@ class NNUE(nn.Module):
             piece_count,
             self.config.use_fake_act_quantization,
             self.config.use_fake_weight_quantization,
+            rule50=rule50,
         )
         return self.compute_loss_with_scorenet(scorenet, batch, current_step)
 
@@ -345,6 +353,7 @@ class NNUE(nn.Module):
             outcome,
             score,
             _piece_count,
+            _rule50,
         ) = batch
 
         scorenet = scorenet * self.model.quantization.nnue2score

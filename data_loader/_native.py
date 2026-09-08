@@ -43,6 +43,7 @@ class SparseBatch(ctypes.Structure):
         ("white", ctypes.POINTER(ctypes.c_int)),
         ("black", ctypes.POINTER(ctypes.c_int)),
         ("piece_count", ctypes.POINTER(ctypes.c_int)),
+        ("rule50", ctypes.POINTER(ctypes.c_int)),
     ]
 
     def get_tensors(self, device, use_pinned_memory=False):
@@ -51,9 +52,9 @@ class SparseBatch(ctypes.Structure):
 
         # We only transfer:
         # - float block: is_white, outcome, score (3 * size floats)
-        # - int block: white, black, piece_count (2 * size * max_active + size ints)
+        # - int block: white, black, piece_count, rule50
         total_floats = size * 3
-        total_ints = size * max_active * 2 + size
+        total_ints = size * max_active * 2 + size * 2
 
         float_block_cpu = torch.from_numpy(
             np.ctypeslib.as_array(self.is_white, shape=(total_floats,))
@@ -72,6 +73,7 @@ class SparseBatch(ctypes.Structure):
         white_indices = int_block_gpu[0 : size * max_active].view(size, max_active)
         black_indices = int_block_gpu[size * max_active : 2 * size * max_active].view(size, max_active)
         piece_count_i32 = int_block_gpu[2 * size * max_active : 2 * size * max_active + size].view(size)
+        rule50 = int_block_gpu[2 * size * max_active + size :].view(size)
 
         # Keep piece counts as int64 so callers can derive buckets on the target device.
         if not us.is_cuda and use_pinned_memory:
@@ -93,6 +95,7 @@ class SparseBatch(ctypes.Structure):
             outcome,
             score,
             piece_count,
+            rule50,
         )
 
 
@@ -128,7 +131,15 @@ class CDataLoaderAPI:
         last_error: OSError | None = None
         for lib in sorted(set(candidates), key=os.path.getmtime, reverse=True):
             try:
-                return ctypes.cdll.LoadLibrary(lib)
+                dll = ctypes.cdll.LoadLibrary(lib)
+                version = getattr(dll, "sparse_batch_abi_version", None)
+                if version is None:
+                    raise OSError(f"Rebuild data loader: {lib} has no batch ABI version")
+                version.restype = ctypes.c_int
+                version.argtypes = []
+                if version() != 2:
+                    raise OSError(f"Rebuild data loader: {lib} has an incompatible batch ABI")
+                return dll
             except OSError as e:
                 last_error = e
 

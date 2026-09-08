@@ -29,6 +29,7 @@ class ComposedFeatureTransformer(nn.Module):
         self.features = nn.ModuleList(features)
 
         self.bias = nn.Parameter(torch.empty(self.num_outputs, dtype=torch.float32))
+        self.rule50 = None
 
         # Aggregate attributes from components
         self.NUM_INPUTS = sum(f.NUM_INPUTS for f in features)
@@ -121,11 +122,28 @@ class ComposedFeatureTransformer(nn.Module):
         fake_quantize_acts: bool,
         fake_quantize_weights: bool,
         backend: str = "auto",
+        rule50: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         merged, bias = self.merged_weight_and_bias(
             fake_quantize_weights
         )
         ft_max_act = self.quantization.max_ft_activation
+
+        if self.rule50 is not None:
+            if rule50 is None:
+                raise ValueError("The FT rule50 embedding requires halfmove clocks")
+            # Add a unit-valued sparse feature: the existing fused kernel
+            # handles both its accumulation and its gradient without changes.
+            clock_weights = self.rule50.quantized_weight(fake_quantize_weights)[0]
+            clock_weights = torch.cat([
+                clock_weights, clock_weights.new_zeros(clock_weights.shape[0], self.num_psqt_buckets)
+            ], dim=1)
+            index = rule50.clamp(0, 100).to(torch.int32).view(-1, 1) + merged.shape[0]
+            merged = torch.cat([merged, clock_weights], dim=0)
+            # Fused kernels stop at the first -1 padding entry. Prepend the
+            # clock so it is reached even when the board has fewer features.
+            white_indices = torch.cat([index, white_indices], dim=1)
+            black_indices = torch.cat([index, black_indices], dim=1)
 
         l0_, wpsqt, bpsqt = double_feature_transform(
             us,

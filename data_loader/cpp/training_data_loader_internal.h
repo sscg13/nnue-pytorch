@@ -49,6 +49,7 @@ struct SparseBatch final {
     int* white;
     int* black;
     int* piece_count;
+    int* rule50;
 
 #ifdef NNUE_LOADER_STATISTICS
     std::vector<struct binpack::TrainingDataEntry> entries_copy;

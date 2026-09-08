@@ -539,6 +539,7 @@ def eval_ft(model: NNUEModel, batch: Iterable[torch.Tensor], device_str: str) ->
             _outcome,
             _score,
             piece_count,
+            rule50,
         ) = batch_tuple
         psqt_indices, _  = model.calculate_buckets(piece_count)
         l0_, wpsqt, bpsqt = model.forward_ft(
@@ -549,6 +550,7 @@ def eval_ft(model: NNUEModel, batch: Iterable[torch.Tensor], device_str: str) ->
             psqt_indices,
             fake_quantize_acts=True,
             fake_quantize_weights=True,
+            rule50=rule50,
         )
         _, _ = wpsqt, bpsqt
         return l0_
@@ -572,10 +574,18 @@ def ft_permute_impl(model: NNUEModel, perm: npt.NDArray[np.int_]) -> None:
     # Apply the permutation in place.
     for f in model.input.features:
         f.weight.copy_(f.weight[:, ft_permutation])
+        if hasattr(f, "virtual_weight"):
+            f.virtual_weight.copy_(f.virtual_weight[:, ft_permutation])
+    if model.input.rule50 is not None:
+        clock = model.input.rule50.weight
+        clock.copy_(clock[:, :, permutation])
     model.input.bias.copy_(model.input.bias[ft_permutation])
     model.layer_stacks.l1.linear.weight.copy_(model.layer_stacks.l1.linear.weight[
         :, permutation
     ])
+    # Optimizer steps can make this virtual layer nonzero before coalescing.
+    factorized = model.layer_stacks.l1.factorized_linear.weight
+    factorized.copy_(factorized[:, permutation])
 
 
 def ft_permute(model: NNUEModel, ft_perm_path: str) -> None:
