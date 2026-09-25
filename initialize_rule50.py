@@ -31,7 +31,7 @@ def main():
     if loaded.missing_keys != [expected] or loaded.unexpected_keys:
         raise ValueError(f"Incompatible baseline: {loaded}")
     torch.save(result, args.target)
-    print(f"Created {args.target}: {args.rule50}, 101 zero-initialized clock rows")
+    print(f"Created {args.target}: {args.rule50}, 12 zero-initialized clock buckets")
 
 
 if __name__ == "__main__":

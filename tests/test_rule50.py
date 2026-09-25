@@ -11,7 +11,7 @@ from ftperm import ft_permute_impl
 from model.config import ModelConfig, NNUELightningConfig
 from model.model import NNUEModel
 from model.nnue import NNUE
-from model.modules.rule50 import Rule50Embedding
+from model.modules.rule50 import Rule50Embedding, RULE50_ROWS, rule50_bucket
 from model.utils.serialize import NNUEReader, NNUEWriter
 
 FEATURES = "HalfKAv2_hm^"
@@ -45,20 +45,23 @@ class Rule50Tests(unittest.TestCase):
         self.assertEqual(data[-1].tolist(), [0, 1, 63, 64, 99, 100, 150, 255])
         self.assertTrue(torch.equal(data[2][0], data[2][-1]))
 
-    def test_independent_rows_clamping_and_gradient(self):
+    def test_tt_boundaries_independent_rows_clamping_and_gradient(self):
+        clocks = torch.tensor([-1, 0, 13, 14, 21, 22, 29, 30, 93, 94, 99, 100, 150, 255])
+        self.assertEqual(rule50_bucket(clocks).tolist(), [0, 0, 0, 1, 1, 2, 2, 3, 10, 11, 11, 11, 11, 11])
+        self.assertEqual(RULE50_ROWS, 12)
         table = Rule50Embedding(2, 8192, stacks=8)
         with torch.no_grad():
             table.weight[3, 1].fill_(0.1)
             table.weight[3, 2].fill_(-0.2)
-            table.weight[3, 100].fill_(0.3)
-        clock = torch.tensor([-1, 0, 1, 2, 100, 150])
+            table.weight[3, 11].fill_(0.3)
+        clock = torch.tensor([-1, 0, 14, 22, 100, 150])
         out = table(clock, torch.full_like(clock, 3))
         self.assertTrue(torch.equal(out[0], out[1]))
         self.assertTrue(torch.equal(out[-1], out[-2]))
         self.assertGreater(out[2, 0], 0)
         self.assertLess(out[3, 0], 0)
         out.sum().backward()
-        self.assertEqual(table.weight.grad[3, 100, 0].item(), 2)
+        self.assertEqual(table.weight.grad[3, 11, 0].item(), 2)
         self.assertEqual(table.weight.grad[2].count_nonzero().item(), 0)
 
     def test_variants_zero_init_roundtrip_permutation_and_optimizer(self):

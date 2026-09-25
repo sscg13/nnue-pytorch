@@ -8,7 +8,7 @@ import tyro
 @dataclass(kw_only=True)
 class LayerStacksConfig:
     rule50: Literal["none", "ft", "hidden1", "hidden2"] = "none"
-    """Discrete halfmove embedding placement (101 rows, clocks clamped to 0..100)."""
+    """Discrete halfmove embedding placement (12 Stockfish TT-aligned buckets)."""
 
     L1: Annotated[int, tyro.conf.arg(name="l1")] = 1024
     """Size of first hidden layer."""

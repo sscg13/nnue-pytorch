@@ -2,15 +2,17 @@
 
 Select `--rule50 ft`, `--rule50 hidden1`, or `--rule50 hidden2` in training,
 serialization, and cross-check commands. Default `none` preserves the baseline
-network format. Every variant uses 101 independent learned rows indexed by
-`clamp(halfmove_clock, 0, 100)`; there is no scalar projection or interpolation.
+network format. Every variant uses 12 independent learned rows. The bucket
+boundaries match Stockfish's transposition-table rule50 key: 0..13, then
+14..21, 22..29, ..., 86..93, and 94+. Clocks at or beyond the claim threshold
+share the last row. There is no scalar projection or interpolation.
 The clock is the fifth FEN field, not game ply.
 
 | Mode | Placement | Parameters at 1024/32/32 | Uncompressed table |
 |---|---|---:|---:|
-| ft | Both perspective accumulations, before clipping/product | 103,424 | 202 KiB, int16 |
-| hidden1 | First 32-unit preactivation, including the direct skip units | 25,856 | 101 KiB, int32 |
-| hidden2 | Second 32-unit preactivation | 25,856 | 101 KiB, int32 |
+| ft | Both perspective accumulations, before clipping/product | 12,288 | 24 KiB, int16 |
+| hidden1 | First 32-unit preactivation, including the direct skip units | 3,072 | 12 KiB, int32 |
+| hidden2 | Second 32-unit preactivation | 3,072 | 12 KiB, int32 |
 
 FT shares one table across perspectives. Hidden variants have separate tables for
 each of the eight material stacks. Tables initialize to zero. FT rows use scale
@@ -55,28 +57,18 @@ net with UCI `setoption name EvalFile value ...` before evaluation/search. All t
 formats have distinct signatures and reject mismatched nets. The existing
 rule-50 evaluation damping is preserved.
 
-## Validation completed
+## Validation
 
-- Native loader build, clock transfer/ownership checks, independent-row and
-  clamping checks, gradients, optimizer registration/updates, zero-init baseline
-  equivalence, FT permutation, compressed/uncompressed serialization and wrong
-  architecture rejection passed. Six existing DDP loader unit tests passed.
-- Each AVX2 engine matched an integer-rounded trainer reference exactly on 2040
-  positions spanning all 101 rows, both sides, and all eight material stacks, using
-  nonzero embedding weights. Each passed a depth-5 search bench.
-- 18440 comparisons of incremental/lazy, reused-cache, null-move and undo
-  evaluations against fresh evaluation passed for hidden2 AVX2 and FT scalar.
-  Positions include captures, pawn moves, castling, en passant and promotions.
-- A short compiled CPU training/validation run passed for hidden1.
-- CUDA/CuPy parity is implemented as an optional test but was skipped because the
-  available environment has CPU-only PyTorch. The FT index placement was then
-  corrected to precede padding based on inspection of the fused kernel; full
-  numerical checks above predate that order-only correction.
-- The two-process training attempt encountered the bundled one-chunk binpack's
-  sharding failure. A multichunk rerun was prepared but execution was blocked by
-  the account usage limit. Distributed training remains unverified end to end.
+The 12-row format has a distinct architecture hash. The focused trainer tests
+passed loader clock transfer, TT boundary mapping, gradients, optimizer
+registration, zero-init baseline equivalence, FT permutation, compressed and
+uncompressed serialization, and wrong-architecture rejection. AVX2 Stockfish
+matched the integer-rounded trainer exactly on 2,040 positions per placement:
+clocks 0..100 and 150, both sides, and all eight material stacks. Each placement
+passed a depth-5 search bench. CUDA, distributed training, and Elo were not
+tested for this experiment.
 
-No full training or Elo experiment was run. Tests and entry points:
+Tests and entry points:
 
 ```
 python -m unittest discover -s tests -p test_rule50.py -v

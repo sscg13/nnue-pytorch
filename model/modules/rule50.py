@@ -1,13 +1,19 @@
 import torch
 from torch import nn
 
-RULE50_ROWS = 101
+RULE50_ROWS = 12
 RULE50_MODES = {"none": 0, "ft": 1, "hidden1": 2, "hidden2": 3}
 
 
 def rule50_hash(mode: str) -> int:
     # Must match nnue_architecture.h. Keep the baseline format unchanged.
-    return 0 if mode == "none" else 0x52353000 ^ (RULE50_MODES[mode] << 16) ^ RULE50_ROWS
+    return 0 if mode == "none" else 0x52355400 ^ (RULE50_MODES[mode] << 16) ^ RULE50_ROWS
+
+
+def rule50_bucket(clock: torch.Tensor) -> torch.Tensor:
+    # Stockfish's TT key leaves clocks 0..13 together, then groups eight plies.
+    # Clock 100 and rare larger training clocks share the 94+ row.
+    return torch.where(clock < 14, 0, 1 + (clock - 14) // 8).clamp(0, RULE50_ROWS - 1).long()
 
 
 class Rule50Embedding(nn.Module):
@@ -28,7 +34,7 @@ class Rule50Embedding(nn.Module):
     def forward(self, clock, stacks, fake_quantize=True):
         if clock is None:
             raise ValueError("The selected rule50 embedding requires halfmove clocks")
-        indices = clock.clamp(0, RULE50_ROWS - 1).long().view(-1)
+        indices = rule50_bucket(clock).view(-1)
         return self.quantized_weight(fake_quantize)[stacks, indices]
 
     @torch.no_grad()

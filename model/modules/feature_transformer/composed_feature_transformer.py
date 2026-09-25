@@ -5,6 +5,7 @@ from torch import nn
 
 from ...quantize import QuantizationManager
 from ..features.input_feature import InputFeature
+from ..rule50 import rule50_bucket
 from .double_ft_functions import double_feature_transform
 
 
@@ -138,7 +139,7 @@ class ComposedFeatureTransformer(nn.Module):
             clock_weights = torch.cat([
                 clock_weights, clock_weights.new_zeros(clock_weights.shape[0], self.num_psqt_buckets)
             ], dim=1)
-            index = rule50.clamp(0, 100).to(torch.int32).view(-1, 1) + merged.shape[0]
+            index = rule50_bucket(rule50).to(torch.int32).view(-1, 1) + merged.shape[0]
             merged = torch.cat([merged, clock_weights], dim=0)
             # Fused kernels stop at the first -1 padding entry. Prepend the
             # clock so it is reached even when the board has fewer features.

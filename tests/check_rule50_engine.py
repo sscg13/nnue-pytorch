@@ -19,6 +19,7 @@ from ftperm import ft_permute_impl
 from model.config import ModelConfig
 from model.model import NNUEModel
 from model.modules.features import DEFAULT_FEATURES
+from model.modules.rule50 import RULE50_ROWS
 from model.utils.serialize import NNUEReader, NNUEWriter
 
 
@@ -41,12 +42,16 @@ def main():
     # Exercise every row, both signs, every output, and each material stack.
     with torch.no_grad():
         values = torch.arange(table.weight.numel()).reshape(table.weight.shape)
-        table.weight.copy_(((values * 17 + values // 101) % 97 - 48) / 256.0)
+        table.weight.copy_(((values * 17 + values // RULE50_ROWS) % 97 - 48) / 256.0)
         ft_permute_impl(model, np.arange(511, -1, -1))
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     net = output_dir / f"{args.mode}.nnue"
     net.write_bytes(NNUEWriter(model, ft_compression="leb128", verbose=False).buf)
+    engine_net = str(net)
+    if args.engine.lower().endswith(".exe") and sys.platform.startswith("linux"):
+        # WSL Python can run the Windows engine, which needs a Windows EvalFile path.
+        engine_net = subprocess.check_output(["wslpath", "-w", engine_net], text=True).strip()
 
     boards = [chess.Board()]
     # All eight material stacks, both kings safely separated.
@@ -87,7 +92,7 @@ def main():
         psqt_int = torch.div(torch.div(psqt_int, 2, rounding_mode="trunc"), 16, rounding_mode="trunc")
         pos_int = torch.div(torch.round(positional * 9600).long(), 16, rounding_mode="trunc")
         expected = (psqt_int + pos_int).flatten().numpy()
-    commands = [f"setoption name EvalFile value {net}"]
+    commands = [f"setoption name EvalFile value {engine_net}"]
     for fen in fens:
         commands += [f"position fen {fen}", "eval"]
     commands.append("quit")
@@ -100,7 +105,7 @@ def main():
     print(f"{args.mode}: {len(fens)} positions, material stacks {sorted(set(((pc-1)//4).tolist()))}, max raw-eval error {errors.max():.6f}", flush=True)
     assert errors.max() == 0, (fens[errors.argmax()], expected[errors.argmax()], actual[errors.argmax()])
     # Bench exercises search, accumulator reuse, move/undo, and null moves.
-    commands = f"setoption name EvalFile value {net}\nbench 16 1 5 default depth\nquit\n"
+    commands = f"setoption name EvalFile value {engine_net}\nbench 16 1 5 default depth\nquit\n"
     run = subprocess.run([str(Path(args.engine).resolve())], input=commands, capture_output=True, text=True, check=True)
     assert "Nodes searched" in run.stderr + run.stdout
     (output_dir / f"{args.mode}-bench.log").write_text(run.stdout + run.stderr)
