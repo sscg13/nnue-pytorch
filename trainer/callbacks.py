@@ -254,6 +254,10 @@ class TerminateOnNaN(Callback):
         # Only sync to CPU when logging is due or at the last batch.
         current_step = (batch_idx or 0) + 1
         if current_step % trainer.log_every_n_steps == 0 or current_step == trainer.num_training_batches:
+            # Every rank must enter the collective, even if only one rank
+            # saw a non-finite loss. Otherwise the failing rank deadlocks.
+            if trainer.world_size > 1 and dist.is_available() and dist.is_initialized():
+                dist.all_reduce(self._finite_flag, op=dist.ReduceOp.MIN)
             if not self._finite_flag.item():
                 self._check_and_stop(trainer, loss, "train")
             # Reset for the next window.
@@ -307,7 +311,7 @@ class CheckpointManager(Callback):
             return self.dirpath
         return os.path.join(
             trainer.default_root_dir,
-            "lightning_logs",
+            "training_logs",
             f"version_{trainer.logger.version}",
             "checkpoints",
         )

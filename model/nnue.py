@@ -2,7 +2,7 @@ import torch
 from torch import Tensor, nn
 from torchmetrics import MeanMetric, MetricCollection
 
-from .config import NNUELightningConfig
+from .config import NNUEConfig
 from .lambda_utils import LambdaController
 from .model import NNUEModel
 
@@ -74,7 +74,7 @@ class NNUE(nn.Module):
 
     def __init__(
         self,
-        config: NNUELightningConfig,
+        config: NNUEConfig,
         max_epoch=None,
         num_batches_per_epoch=None,
         param_index=0,
@@ -105,9 +105,12 @@ class NNUE(nn.Module):
 
         self.loss_metrics = MetricCollection(
             {
-                "train_loss_epoch": MeanMetric(),
-                "val_loss_epoch": MeanMetric(),
-                "test_loss_epoch": MeanMetric(),
+                # Avoid a CUDA-to-CPU NaN check on every metric update.
+                # TerminateOnNaN checks at logging boundaries; non-finite
+                # losses still propagate into the epoch metric.
+                "train_loss_epoch": MeanMetric(nan_strategy="disable"),
+                "val_loss_epoch": MeanMetric(nan_strategy="disable"),
+                "test_loss_epoch": MeanMetric(nan_strategy="disable"),
             }
         )
 

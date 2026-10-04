@@ -9,8 +9,8 @@ from tyro.conf import (
     UseAppendAction,
 )
 
-from data_loader.config import DataloaderSkipConfig
-from model.config import NNUELightningConfig
+from data_loader.config import DataloaderIOConfig, DataloaderSkipConfig
+from model.config import NNUEConfig
 
 
 @dataclass(kw_only=True)
@@ -91,8 +91,12 @@ class TrainingConfig:
         default_factory=DataloaderSkipConfig
     )
 
-    nnue_lightning_config: OmitArgPrefixes[NNUELightningConfig] = field(
-        default_factory=NNUELightningConfig
+    dataloader_io_config: OmitArgPrefixes[DataloaderIOConfig] = field(
+        default_factory=DataloaderIOConfig
+    )
+
+    nnue_config: OmitArgPrefixes[NNUEConfig] = field(
+        default_factory=NNUEConfig
     )
 
     @property

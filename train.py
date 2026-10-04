@@ -36,6 +36,7 @@ def make_data_loaders(
     num_workers,
     batch_size,
     config: data_loader.DataloaderSkipConfig,
+    io_config: data_loader.DataloaderIOConfig,
     epoch_size,
     val_size,
     pin_memory,
@@ -55,6 +56,7 @@ def make_data_loaders(
         num_workers=num_workers,
         config=config,
         ddp_config=DataloaderDDPConfig(rank=rank, world_size=world_size),
+        io_config=io_config,
     )
     # num_workers has to be 0 for sparse, and 1 for dense
     # it currently cannot work in parallel mode but it shouldn't need to
@@ -90,8 +92,10 @@ def make_data_loaders(
             features_name,
             val_filenames,
             batch_size,
+            num_workers=num_workers,
             config=config,
             ddp_config=DataloaderDDPConfig(rank=rank, world_size=world_size),
+            io_config=io_config,
         )
         val = DataLoader(
             data_loader.FixedNumBatchesDataset(
@@ -225,12 +229,12 @@ def main():
             msg += f" Got --gpus={args.gpus or '0'}."
         raise ValueError(msg)
     per_gpu_batch_size = global_batch_size_requested // n_devices
-    feature_name = args.nnue_lightning_config.features
+    feature_name = args.nnue_config.features
 
     max_epoch = args.max_epochs or 800
     if args.resume_from_model is None:
         nnue = M.NNUE(
-            config=args.nnue_lightning_config,
+            config=args.nnue_config,
             max_epoch=max_epoch,
             num_batches_per_epoch=args.num_batches_per_epoch,
             param_index=args.dataloader_config.param_index,
@@ -250,7 +254,7 @@ def main():
         # from .pt the optimizer is only created after the training is started
         nnue.max_epoch = max_epoch
         nnue.num_batches_per_epoch = args.num_batches_per_epoch
-        nnue.config = args.nnue_lightning_config
+        nnue.config = args.nnue_config
         nnue.param_index = args.dataloader_config.param_index
 
     input_feature_name = nnue.model.input_feature_name
@@ -259,6 +263,24 @@ def main():
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.backends.cudnn.benchmark = True
+
+    if accelerator == "cuda":
+        # With act and weight fake-quantization on, every dense GEMM input is
+        # k/128 (k <= 127) and every weight k/128 or k/64, all exact in TF32's
+        # 11-bit significand, and products are exact in the fp32 accumulator:
+        # the forward is bit-identical and only backward matmuls round (~5e-4
+        # relative). Set the flag explicitly so training no longer depends on
+        # container images exporting TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=1, which
+        # is worth ~9% at the production shapes. Unquantized runs keep fp32.
+        quantized = (
+            args.nnue_config.use_fake_act_quantization
+            and args.nnue_config.use_fake_weight_quantization
+        )
+        override = os.environ.get("NNUE_TF32", "")
+        enable_tf32 = (override == "1") if override else quantized
+        torch.backends.cuda.matmul.allow_tf32 = enable_tf32
+        if is_master_process():
+            print(f"cuBLAS TF32 matmul: {enable_tf32} (quantized={quantized})")
 
     logdir = args.default_root_dir if args.default_root_dir else "logs/"
     tb_logger = TensorBoardLogger(logdir)
@@ -270,7 +292,7 @@ def main():
             f"batch_size(global)={global_batch_size_requested} | n_devices={n_devices} | batch_size(per_gpu)={per_gpu_batch_size}"
         )
         print("Loss parameters:")
-        print(args.nnue_lightning_config.loss_params)
+        print(args.nnue_config.loss_params)
         print(f"Feature set: {feature_name}")
         print(f"Num inputs: {nnue.model.input.NUM_INPUTS}")
 
@@ -310,6 +332,7 @@ def main():
         actual_workers,
         per_gpu_batch_size,
         args.dataloader_config,
+        args.dataloader_io_config,
         args.epoch_size,
         args.validation_size,
         pin_memory=args.pin_memory and accelerator == "cuda",
