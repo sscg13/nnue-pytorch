@@ -29,9 +29,10 @@ def _orient(is_white_pov: bool, sq: int, ksq: int) -> int:
 
 
 class HalfKav2Hm(InputFeature):
-    HASH = 0x7F234CB8
+    HASH = 0x7F234CB9
     FEATURE_NAME = "HalfKAv2_hm^"
     INPUT_FEATURE_NAME = "HalfKAv2_hm"
+    EXPORT_WEIGHT_DTYPE = torch.int8
     MAX_ACTIVE_FEATURES = 32
 
     NUM_SQ = 64
@@ -73,6 +74,28 @@ class HalfKav2Hm(InputFeature):
     def init_weights(self) -> None:
         """Initialize virtual weights to zero."""
         self.zero_virtual_weights()
+
+    def clip_weights(self, quantization) -> None:
+        p_data_fp32 = self.weight.data
+        min_weight = quantization.min_threat_weight
+        max_weight = quantization.max_threat_weight
+
+        virtual_params = self.virtual_weight.data
+        xs = p_data_fp32.shape[0] // virtual_params.shape[0]
+        ys = p_data_fp32.shape[1] // virtual_params.shape[1]
+        expanded_virtual_layer = virtual_params.repeat(xs, ys)
+
+        if min_weight is not None:
+            min_weight = (
+                p_data_fp32.new_full(p_data_fp32.shape, min_weight)
+                - expanded_virtual_layer
+            )
+        if max_weight is not None:
+            max_weight = (
+                p_data_fp32.new_full(p_data_fp32.shape, max_weight)
+                - expanded_virtual_layer
+            )
+        p_data_fp32.clamp_(min_weight, max_weight)
 
     @torch.no_grad()
     def get_export_weights(self) -> torch.Tensor:
