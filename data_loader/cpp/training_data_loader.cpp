@@ -525,7 +525,7 @@ SparseBatch::SparseBatch(const IFeatureExtractor&               feature_set,
     size                      = entries.size();
     max_active_features       = feature_set.max_active_features();
     const size_t total_floats = size * 3;
-    const size_t total_ints   = size + size * max_active_features * 2;
+    const size_t total_ints   = size * 2 + size * max_active_features * 2;
 
     if (m_buffer_pool)
     {
@@ -548,6 +548,7 @@ SparseBatch::SparseBatch(const IFeatureExtractor&               feature_set,
     white       = int_alloc.alloc(size * max_active_features);
     black       = int_alloc.alloc(size * max_active_features);
     piece_count = int_alloc.alloc(size);
+    queen_bucket = int_alloc.alloc(size);
 
     num_active_white_features = 0;
     num_active_black_features = 0;
@@ -565,7 +566,7 @@ SparseBatch::~SparseBatch() {
     if (m_buffer_pool)
         m_buffer_pool->release(
           {std::unique_ptr<float[]>(m_float_block), std::unique_ptr<int[]>(m_int_block)},
-          std::size_t(size) * 3, std::size_t(size) * (2 * max_active_features + 1));
+          std::size_t(size) * 3, std::size_t(size) * (2 * max_active_features + 2));
     else
     {
         delete[] m_float_block;
@@ -578,6 +579,9 @@ void SparseBatch::fill_entry(const IFeatureExtractor& fs, int i, const TrainingD
     outcome[i]     = (e.result + 1.0f) / 2.0f;
     score[i]       = e.score;
     piece_count[i] = e.pos.piecesBB().count();
+    const auto stm  = e.pos.sideToMove();
+    queen_bucket[i] = (e.pos.piecesBB(Piece(PieceType::Queen, stm)).any() ? 2 : 0)
+                    | (e.pos.piecesBB(Piece(PieceType::Queen, !stm)).any() ? 1 : 0);
     fill_features(fs, i, e);
 }
 
@@ -630,7 +634,7 @@ FeaturedBatchStream::FeaturedBatchStream(
     // process-global cache or keeping buffers alive after the stream closes.
     m_buffer_pool = std::make_shared<SparseBatchBufferPool>(
       std::size_t(batch_size) * 3,
-      std::size_t(batch_size) * (2 * m_feature_set->max_active_features() + 1),
+      std::size_t(batch_size) * (2 * m_feature_set->max_active_features() + 2),
       std::size_t(m_batch_queue_capacity) + m_num_workers.load() + 1);
     m_stop_flag.store(false);
 
