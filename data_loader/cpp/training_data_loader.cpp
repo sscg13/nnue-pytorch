@@ -141,7 +141,7 @@ struct K32Q2Extractor: IFeatureExtractor {
     }
 };
 
-// Pawn attackers no longer target pawns; those relationships are represented by PP_3Wide.
+// Pawn attackers no longer target pawns; those relationships are represented by PP_K8.
 constexpr int numvalidtargets[6] = {4, 10, 8, 8, 10, 0};
 
 constexpr int threat_piece(Piece piece) { return (int) piece.color() * 5 + (int) piece.type(); }
@@ -299,7 +299,7 @@ struct FullThreats {
                 Bitboard bb       = pos.piecesBB(attkr);
                 auto     allPawns = pos.piecesBB(whitePawn) | pos.piecesBB(blackPawn);
 
-                // Diagonal pawn threats exclude pawn targets (those are handled by PP_3Wide)
+                // Diagonal pawn threats exclude pawn targets (those are handled by PP_K8)
                 auto diagTargets = piecesNoK & ~allPawns;
 
                 auto right   = (c == Color::White) ? Offset(1, 1) : Offset(-1, -1);
@@ -363,7 +363,7 @@ struct FullThreatsExtractor: IFeatureExtractor {
 };
 
 struct PP_3Wide {
-    static constexpr std::string_view NAME = "PP_3Wide";
+    static constexpr std::string_view NAME = "PP_K8";
 
     static constexpr int NUM_PLANES          = 2163;
     static constexpr int NUM_BUCKETS         = 8;
@@ -530,7 +530,7 @@ static std::unique_ptr<IFeatureExtractor> make_single_extractor(std::string_view
         return std::make_unique<K32Q2Extractor>();
     if (name == "Full_Threats")
         return std::make_unique<FullThreatsExtractor>();
-    if (name == "PP_3Wide")
+    if (name == "PP_K8" || name == "PP_3Wide")
         return std::make_unique<PP_3WideExtractor>();
     return nullptr;
 }

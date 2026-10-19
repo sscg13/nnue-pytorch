@@ -6,8 +6,8 @@ from .input_feature import InputFeature
 
 class PP3Wide(InputFeature):
     HASH = 0x65F06AEB
-    FEATURE_NAME = "PP_3Wide^"
-    INPUT_FEATURE_NAME = "PP_3Wide"
+    FEATURE_NAME = "PP_K8^"
+    INPUT_FEATURE_NAME = "PP_K8"
     MAX_ACTIVE_FEATURES = 128
 
     NUM_PLANES = 2163
