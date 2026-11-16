@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from functools import cache
 from torch import autograd
 
 _HAS_CUPY_KERNELS = False
@@ -16,6 +17,11 @@ except (ImportError, OSError, RuntimeError):
     BACKWARD_TILE_SIZE = 1
 
 
+@cache
+def _is_h200(device):
+    return "H200" in torch.cuda.get_device_name(device).upper()
+
+
 def _use_aggregated_backward(
     l1_size, batch_size, max_active_features, device, *, mode="auto"
 ):
@@ -24,15 +30,21 @@ def _use_aggregated_backward(
         raise ValueError(f"mode must be auto, scatter, or aggregated, got {mode!r}")
     if mode == "scatter" or torch.version.hip is not None:
         return False
-    if not (
-        512 <= l1_size <= 4096 and l1_size % 128 == 0 and 0 < max_active_features <= 288
-    ):
+    if not (256 <= l1_size <= 4096 and l1_size % 128 == 0
+            and 0 < max_active_features <= 288):
         return False
     capability = torch.cuda.get_device_capability(device)
     if capability[0] < 8:
         return False
     if mode == "aggregated":
         return True
+    if l1_size == 256:
+        # Measured on four H200s for the 1024-wide, four-way sharded FT.
+        # Other Hopper GPUs and feature sets retain the existing scatter path.
+        return (capability == (9, 0) and batch_size == 131072
+                and max_active_features == 260 and _is_h200(device))
+    if l1_size < 512:
+        return False
     # H100 retains its existing threshold. RTX 4090 and A100 measurements show
     # a benefit from 4096 positions; smaller batches keep direct scatter.
     return (
@@ -49,6 +61,8 @@ def _aggregated_tile_size(l1_size, batch_size, max_active_features, capability):
     The tile must stay at or below 16 positions: rows are tracked in a 32-bit
     mask (two rows per position, one per perspective).
     """
+    if l1_size == 256 and batch_size == 131072 and max_active_features == 260 and capability == (9, 0):
+        return 14
     if l1_size == 1024 and max_active_features == 288:
         if capability == (8, 9) and batch_size >= 32768:
             return 14

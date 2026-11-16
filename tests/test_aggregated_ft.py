@@ -105,3 +105,35 @@ def test_aggregated_ft(width, batch, active, kind, separate_stream, tile_size):
 )
 def test_full_large_tile_with_partial_tail():
     test_aggregated_ft(1024, 29, 288, "full", True, 14)
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not _HAS_CUPY_KERNELS,
+    reason="CUDA and CuPy required",
+)
+@pytest.mark.parametrize("batch,active,kind,tile", [
+    (1, 33, "empty", 8),
+    (17, 288, "overlap", 8),
+    (1025, 33, "overlap", 14),
+    (29, 288, "full", 14),
+])
+def test_aggregated_ft_sharded_256(batch, active, kind, tile):
+    test_aggregated_ft(256, batch, active, kind, True, tile)
+
+
+def test_h200_256_selector_is_narrow(monkeypatch):
+    from model.modules.feature_transformer import fused_ft_functions as ft
+
+    monkeypatch.setattr(torch.version, "hip", None)
+    monkeypatch.setattr(torch.cuda, "get_device_capability", lambda _: (9, 0))
+    monkeypatch.setattr(torch.cuda, "get_device_name", lambda _: "NVIDIA H200")
+    ft._is_h200.cache_clear()
+    assert ft._use_aggregated_backward(256, 131072, 260, "cuda:0")
+    assert not ft._use_aggregated_backward(256, 32768, 260, "cuda:0")
+    assert not ft._use_aggregated_backward(256, 131072, 288, "cuda:0")
+    assert not ft._use_aggregated_backward(256, 131072, 260, "cuda:0", mode="scatter")
+    assert ft._aggregated_tile_size(256, 131072, 260, (9, 0)) == 14
+    monkeypatch.setattr(torch.cuda, "get_device_name", lambda _: "NVIDIA H100")
+    ft._is_h200.cache_clear()
+    assert not ft._use_aggregated_backward(256, 131072, 260, "cuda:0")
+    ft._is_h200.cache_clear()
