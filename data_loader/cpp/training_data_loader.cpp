@@ -83,8 +83,11 @@ struct K32H3 {
     }
 };
 
-// Pawn attackers no longer target pawns; those relationships are represented by PP_3Wide.
-constexpr int numvalidtargets[6] = {4, 10, 8, 8, 10, 0};
+// Counts of the enabled prefix of each threat map row for friendly and enemy targets.
+// Keep this in sync with Stockfish's FullThreats index layout.
+constexpr int threatTargetCounts[6][2] = {
+  {2, 0}, {5, 3}, {4, 3}, {4, 4}, {5, 5}, {0, 0},
+};
 
 constexpr int threat_piece(Piece piece) { return (int) piece.color() * 5 + (int) piece.type(); }
 
@@ -140,14 +143,15 @@ constexpr auto threatfeaturecalc = []() {
         }
 
         t[piece][64] = squareoffset;
-        pieceoffset += numvalidtargets[(int) piecetbl[piece].type()] * squareoffset;
+        const auto& targetCounts = threatTargetCounts[(int) piecetbl[piece].type()];
+        pieceoffset += (targetCounts[0] + targetCounts[1]) * squareoffset;
     }
     return ThreatFeatureCalculation{t, pieceoffset};
 }();
 
 constexpr ThreatOffsetTable threatoffsets  = threatfeaturecalc.table;
 constexpr int               threatfeatures = threatfeaturecalc.totalfeatures;
-static_assert(threatfeatures == 59808);
+static_assert(threatfeatures == 57008);
 
 struct FullThreats {
     static constexpr std::string_view NAME = "Full_Threats";
@@ -202,11 +206,12 @@ struct FullThreats {
             attkd = Piece::fromId((int) attkd ^ 1);
         }
 
+        bool enemy = attkr.color() != attkd.color();
+        const auto& targetCounts = threatTargetCounts[(int) attkr.type()];
         int slot = map[(int) attkr.type()][(int) attkd.type()];
-        if (slot < 0)
+        if (slot < 0 || slot >= targetCounts[enemy])
             return -1;
 
-        bool enemy = attkr.color() != attkd.color();
         if (attkr.type() == attkd.type() && (enemy || attkr.type() != PieceType::Pawn) && from < to)
             return -1;
 
@@ -214,10 +219,10 @@ struct FullThreats {
                             ? bb::pawnAttacks(Bitboard::square(from), attkr.color())
                             : bb::detail::pseudoAttacks()[attkr.type()][from];
         int      attacker = threat_piece(attkr);
+        if (attkd.color() == Color::Black)
+            slot += targetCounts[attkr.color() == Color::Black];
         return int(threatoffsets[attacker][65]
-                   + (int(attkd.color()) * (numvalidtargets[(int) attkr.type()] / 2) + slot)
-                       * threatoffsets[attacker][64]
-                   + threatoffsets[attacker][(int) from]
+                   + slot * threatoffsets[attacker][64] + threatoffsets[attacker][(int) from]
                    + (Bitboard::fromBits((1ULL << (int) to) - 1) & attacks).count());
     }
 
