@@ -295,15 +295,23 @@ struct FullThreats {
     }
 };
 
-struct PP_3Wide {
-    static constexpr std::string_view NAME = "PP_3Wide";
-
+template<bool Bucketed>
+struct PawnPairs {
     static constexpr int PAWN_IDS            = 2 * 48;
-    static constexpr int INPUTS              = PAWN_IDS * (PAWN_IDS - 1) / 2;
+    static constexpr int PAIRS_PER_BUCKET    = 23 * (PAWN_IDS - 2) + 1;
+    static constexpr int KING_BUCKETS        = 2;
+    static constexpr int INPUTS =
+      Bucketed ? K32H3::NUM_STATES * KING_BUCKETS * PAIRS_PER_BUCKET
+               : PAWN_IDS * (PAWN_IDS - 1) / 2;
     static constexpr int MAX_ACTIVE_FEATURES = 100;
 
     static int make_pawn_id(Color color, Square square) {
-        return 48 * static_cast<int>(color) + static_cast<int>(square) - static_cast<int>(a2);
+        const int sq = static_cast<int>(square);
+        const int c  = static_cast<int>(color);
+        if constexpr (Bucketed)
+            return 12 * (sq & 7) + (sq >> 3) - 1 + 6 * c;
+        else
+            return 48 * c + sq - static_cast<int>(a2);
     }
 
     static int make_index(
@@ -326,7 +334,10 @@ struct PP_3Wide {
         int hi   = std::max(id_a, id_b);
         int lo   = std::min(id_a, id_b);
 
-        return hi * (hi - 1) / 2 + lo;
+        if constexpr (Bucketed)
+            return 22 * lo + hi - 1;
+        else
+            return hi * (hi - 1) / 2 + lo;
     }
 
     static std::pair<int, int>
@@ -334,6 +345,13 @@ struct PP_3Wide {
         auto& pos         = e.pos;
         auto  allPawns    = pos.piecesBB(whitePawn) | pos.piecesBB(blackPawn);
         auto  ksq         = pos.kingSquare(color);
+        int   offset      = 0;
+        if constexpr (Bucketed)
+        {
+            const int relativeRank = static_cast<int>(orient_flip_2(color, ksq, ksq)) >> 3;
+            offset = (K32H3::block_idx(pos, color) * KING_BUCKETS + (relativeRank != 0))
+                   * PAIRS_PER_BUCKET;
+        }
         Color order[2][2] = {{Color::White, Color::Black}, {Color::Black, Color::White}};
         int   k           = 0;
 
@@ -356,7 +374,7 @@ struct PP_3Wide {
                     int   index        = make_index(color, c, from, to, paired_color, ksq);
                     if (index < INPUTS)
                     {
-                        features[k] = index;
+                        features[k] = index + offset;
                         ++k;
                     }
                 }
@@ -422,7 +440,9 @@ static std::unique_ptr<IFeatureExtractor> make_single_extractor(std::string_view
     if (name == "Full_Threats")
         return std::make_unique<SimpleExtractor<FullThreats>>();
     if (name == "PP_3Wide")
-        return std::make_unique<SimpleExtractor<PP_3Wide>>();
+        return std::make_unique<SimpleExtractor<PawnPairs<false>>>();
+    if (name == "PP_K2H3")
+        return std::make_unique<SimpleExtractor<PawnPairs<true>>>();
     if (name == "K32H3")
         return std::make_unique<SimpleExtractor<K32H3>>();
     return nullptr;
