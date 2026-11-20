@@ -29,29 +29,38 @@ static Square orient_flip_2(Color color, Square sq, Square ksq) {
     return sq;
 }
 
-struct K32H3 {
-    static constexpr std::string_view NAME = "K32H3";
+template<bool MergeUpperKingSquares>
+struct KingPieceSquare {
+    static constexpr std::string_view NAME = MergeUpperKingSquares ? "K20H3" : "K32H3";
 
     static constexpr int NUM_SQ              = 64;
     static constexpr int NUM_PT              = 12;
     static constexpr int NUM_PLANES          = NUM_SQ * NUM_PT;
-    static constexpr int NUM_KING_BUCKETS    = NUM_SQ / 2;
+    static constexpr int NUM_KING_BUCKETS    = MergeUpperKingSquares ? 20 : NUM_SQ / 2;
     static constexpr int NUM_STATES          = 3;
     static constexpr int NUM_BUCKETS         = NUM_KING_BUCKETS * NUM_STATES;
     static constexpr int INPUTS              = NUM_PLANES * NUM_BUCKETS;
     static constexpr int MAX_ACTIVE_FEATURES = 32;
 
     // clang-format off
-    static constexpr int KingBuckets[64] = {
-      -1, -1, -1, -1, 31, 30, 29, 28,
-      -1, -1, -1, -1, 27, 26, 25, 24,
-      -1, -1, -1, -1, 23, 22, 21, 20,
-      -1, -1, -1, -1, 19, 18, 17, 16,
-      -1, -1, -1, -1, 15, 14, 13, 12,
-      -1, -1, -1, -1, 11, 10, 9, 8,
-      -1, -1, -1, -1, 7, 6, 5, 4,
-      -1, -1, -1, -1, 3, 2, 1, 0
-    };
+    static constexpr auto KingBuckets = [] {
+        std::array<int, 64> buckets = {
+          -1, -1, -1, -1, 31, 30, 29, 28,
+          -1, -1, -1, -1, 27, 26, 25, 24,
+          -1, -1, -1, -1, 23, 22, 21, 20,
+          -1, -1, -1, -1, 19, 18, 17, 16,
+          -1, -1, -1, -1, 15, 14, 13, 12,
+          -1, -1, -1, -1, 11, 10, 9, 8,
+          -1, -1, -1, -1, 7, 6, 5, 4,
+          -1, -1, -1, -1, 3, 2, 1, 0
+        };
+        // IDs increase from h8 toward e1. Merge paired ranks and files above rank 4.
+        if constexpr (MergeUpperKingSquares)
+            for (int& bucket : buckets)
+                if (bucket >= 0)
+                    bucket = bucket < 16 ? 2 * (bucket / 8) + (bucket % 4) / 2 : bucket - 12;
+        return buckets;
+    }();
     // clang-format on
 
     static int block_idx(const Position& pos, Color color) {
@@ -82,6 +91,9 @@ struct K32H3 {
         return {j, INPUTS};
     }
 };
+
+using K32H3 = KingPieceSquare<false>;
+using K20H3 = KingPieceSquare<true>;
 
 // Pawn attackers no longer target pawns; those relationships are represented by PP_3Wide.
 constexpr int numvalidtargets[6] = {4, 10, 8, 8, 10, 0};
@@ -425,6 +437,8 @@ static std::unique_ptr<IFeatureExtractor> make_single_extractor(std::string_view
         return std::make_unique<SimpleExtractor<PP_3Wide>>();
     if (name == "K32H3")
         return std::make_unique<SimpleExtractor<K32H3>>();
+    if (name == "K20H3")
+        return std::make_unique<SimpleExtractor<K20H3>>();
     return nullptr;
 }
 

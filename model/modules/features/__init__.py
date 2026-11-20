@@ -7,10 +7,12 @@ import tyro
 
 from .full_threats import FullThreats
 from .input_feature import InputFeature
+from .k20h3 import K20H3
 from .k32h3 import K32H3
 from .pp_3wide import PP3Wide
 
 _FEATURE_COMPONENTS: dict[str, type[InputFeature]] = {
+    "K20H3^": K20H3,
     "K32H3^": K32H3,
     "Full_Threats": FullThreats,
     "PP_3Wide": PP3Wide,
@@ -52,6 +54,7 @@ def add_feature_args(parser: argparse.ArgumentParser) -> None:
 
 
 __all__ = [
+    "K20H3",
     "K32H3",
     "FeatureConfig",
     "FullThreats",

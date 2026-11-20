@@ -41,6 +41,7 @@ class K32H3(InputFeature):
     # Export size uses 11 piece types (704 * 96 = 67,584)
     NUM_REAL_FEATURES = 704 * NUM_BUCKETS  # 67,584
     EXPORT_WEIGHT_DTYPE = torch.int8
+    KING_SQUARES = tuple((sq,) for sq in InverseKingBuckets)
 
     def __init__(self, num_outputs: int):
         super().__init__()
@@ -57,7 +58,11 @@ class K32H3(InputFeature):
 
     @classmethod
     def own_king_square(cls, bucket: int) -> int:
-        return InverseKingBuckets[bucket % cls.NUM_KING_BUCKETS]
+        return cls.own_king_squares(bucket)[0]
+
+    @classmethod
+    def own_king_squares(cls, bucket: int) -> tuple[int, ...]:
+        return cls.KING_SQUARES[bucket % cls.NUM_KING_BUCKETS]
 
     def merged_weight(self) -> torch.Tensor:
         return self.weight + self.virtual_weight.repeat(self.NUM_BUCKETS, 1)
@@ -118,12 +123,11 @@ class K32H3(InputFeature):
             own_king_src = src_offset + 10 * 64
             opp_king_src = src_offset + 11 * 64
             dst_king = dst_offset + 10 * 64
-            ksq = self.own_king_square(b)
-
             export[dst_king : dst_king + 64] = coalesced[
                 opp_king_src : opp_king_src + 64
             ]
-            export[dst_king + ksq] = coalesced[own_king_src + ksq]
+            for ksq in self.own_king_squares(b):
+                export[dst_king + ksq] = coalesced[own_king_src + ksq]
 
         return export
 
@@ -148,16 +152,12 @@ class K32H3(InputFeature):
 
             # Split merged king block back into p_idx 10 and 11
             src_king = src_offset + 10 * 64
-            ksq = self.own_king_square(b)
-
-            # Own king: only weight at ksq matters (rest stays zero)
-            expanded[dst_offset + 10 * 64 + ksq] = export_weight[src_king + ksq]
-
-            # Opponent king: all squares from merged, except ksq -> 0
-            expanded[dst_offset + 11 * 64 : dst_offset + 12 * 64] = export_weight[
-                src_king : src_king + 64
-            ]
-            expanded[dst_offset + 11 * 64 + ksq] = 0
+            own_king = dst_offset + 10 * 64
+            opp_king = dst_offset + 11 * 64
+            expanded[opp_king : opp_king + 64] = export_weight[src_king : src_king + 64]
+            for ksq in self.own_king_squares(b):
+                expanded[own_king + ksq] = export_weight[src_king + ksq]
+                expanded[opp_king + ksq] = 0
 
         self.weight.data.copy_(expanded)
         self.zero_virtual_weights()
